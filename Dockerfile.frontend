@@ -1,0 +1,84 @@
+# ════════════════════════════════════════════════════════════════
+# Dockerfile.frontend — Next.js 15 standalone production build
+# ────────────────────────────────────────────────────────────────
+# Solo per self-host. Vercel non lo usa (Vercel ricostruisce
+# dall'output di `next build` direttamente sui suoi runner).
+#
+# Build:
+#   docker build -f Dockerfile.frontend -t savantsdatabas-frontend .
+#
+# Run (richiede env vars):
+#   docker run --rm -p 3000:3000 \
+#     -e NEXT_PUBLIC_SUPABASE_URL=... \
+#     -e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=... \
+#     -e SUPABASE_SECRET_KEY=... \
+#     -e NEXT_PUBLIC_ORCHESTRATOR_URL=... \
+#     -e ORCHESTRATOR_API_TOKEN=... \
+#     savantsdatabas-frontend
+#
+# Requisiti next.config.ts: `output: "standalone"` (gestito).
+# ════════════════════════════════════════════════════════════════
+
+
+# ─── Stage 1: deps ───────────────────────────────────────────────
+# Layer separato così npm ci viene cached finché package*.json non cambia.
+FROM node:20-alpine AS deps
+WORKDIR /app
+
+# libc6-compat serve a sharp/altri binari nativi su alpine.
+RUN apk add --no-cache libc6-compat
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+
+# ─── Stage 2: builder ────────────────────────────────────────────
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Disattiva telemetria Next.js durante build (privacy + reproducibilità).
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Build args opzionali per env NEXT_PUBLIC_* che servono in build-time
+# (es. se referenziati a livello di modulo). In prod Vercel li passa via
+# UI; per Docker locale puoi passarli via `--build-arg`.
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+ARG NEXT_PUBLIC_ORCHESTRATOR_URL
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_ORCHESTRATOR_URL=$NEXT_PUBLIC_ORCHESTRATOR_URL
+
+RUN npm run build
+
+
+# ─── Stage 3: runner ─────────────────────────────────────────────
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+# Utente non-root per security.
+RUN addgroup --system --gid 1001 nodejs \
+  && adduser --system --uid 1001 nextjs
+
+# Copia output standalone (include server.js + node_modules minimi).
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+
+USER nextjs
+
+EXPOSE 3000
+
+# Healthcheck — Next.js standalone serve sempre `/` se l'app boots.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
+
+CMD ["node", "server.js"]

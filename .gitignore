@@ -1,0 +1,134 @@
+# ─── Dependencies ──────────────────────────────────────────────
+node_modules/
+.pnp/
+.pnp.js
+.yarn/
+
+# ─── Next.js build output ──────────────────────────────────────
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+
+# ─── Logs ──────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ─── Environment variables (NEVER COMMIT REAL SECRETS) ─────────
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+# ...but DO commit example/template files
+!.env.example
+!.env*.local.example
+
+# ─── Python backend (FastAPI orchestrator — futura cartella backend/) ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.python-version
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+*.egg-info/
+*.egg
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.hypothesis/
+
+# ─── Local databases / data dumps (mai committare dati reali) ──
+*.db
+*.sqlite
+*.sqlite3
+*.duckdb
+data/raw/
+data/cache/
+data/bulk/
+backend/data/
+
+# ─── Secrets / credentials ─────────────────────────────────────
+*.pem
+*.key
+*.p12
+*.pfx
+service-account*.json
+credentials.json
+secrets.json
+
+# ─── Editor / IDE ──────────────────────────────────────────────
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ─── OS files ──────────────────────────────────────────────────
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+desktop.ini
+$RECYCLE.BIN/
+*.lnk
+.Spotlight-V100
+.Trashes
+
+# ─── Misc tooling ──────────────────────────────────────────────
+.turbo/
+.vercel/
+.netlify/
+.nyc_output/
+coverage/
+.cache/
+
+# ─── Deploy / build artifacts (Fase 17) ────────────────────────
+*.tar.gz
+*.tgz
+# Docker / compose locali con override
+docker-compose.override.yml
+# Backup DB locali (vedi docs/DEPLOY.md § 9)
+backup-*.sql
+backup-*.dump
+
+# ─── Claude Code / agent artifacts (locali per dev) ────────────
+.claude/
+opencode/
+
+# ─── Supabase (CLI temp files — config.toml and migrations ARE committed) ──
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+supabase/seed.sql.tmp
+
+# ─── Backend Python — env + virtualenv + bulk cache ────────────
+backend/.env
+backend/.venv/
+backend/data/bulk/
+
+# ─── T4 Playwright scraper artifacts (local only, never committed) ──
+backend/data/storage/*.json
+backend/data/screenshots/*.png

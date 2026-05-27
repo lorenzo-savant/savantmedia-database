@@ -1,0 +1,107 @@
+# ════════════════════════════════════════════════════════════════
+# docker-compose.yml — full-stack locale per testing
+# ────────────────────────────────────────────────────────────────
+# Per dev locale full-stack quando vuoi simulare tutto in container.
+# Prod: usa Vercel (frontend) + VPS systemd (backend) — NON docker-compose.
+#
+# Uso:
+#   docker compose up -d --build       # avvia tutto
+#   docker compose logs -f backend     # tail logs
+#   docker compose down                # ferma + rimuove
+#   docker compose down -v             # rimuove anche i volumi (RESETTA dati!)
+#
+# Servizi:
+#   frontend  → http://localhost:3000  (Next.js standalone)
+#   backend   → http://localhost:8000  (FastAPI)
+#   searxng   → http://localhost:8888  (motore di ricerca self-host)
+#   redis     → localhost:6379         (job queue futura)
+# ════════════════════════════════════════════════════════════════
+
+services:
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      # Build-args per env NEXT_PUBLIC_* referenziati a build-time.
+      # Per ora non strettamente necessari: il client legge a runtime.
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}
+        NEXT_PUBLIC_ORCHESTRATOR_URL: http://backend:8000
+    image: savantsdatabas-frontend:local
+    container_name: savantsdatabas-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      # Backend è raggiungibile dal browser come `localhost:8000` (porta forwardata)
+      # ma da server-side route handler come `http://backend:8000` (DNS interno).
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY}
+      NEXT_PUBLIC_ORCHESTRATOR_URL: ${NEXT_PUBLIC_ORCHESTRATOR_URL:-http://localhost:8000}
+      ORCHESTRATOR_API_TOKEN: ${ORCHESTRATOR_API_TOKEN}
+    depends_on:
+      - backend
+    networks:
+      - savantnet
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: savantsdatabas-backend:local
+    container_name: savantsdatabas-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override quando giri in compose: punta ai servizi interni.
+      REDIS_URL: redis://redis:6379/0
+      SEARXNG_URL: http://searxng:8080
+    depends_on:
+      - redis
+      - searxng
+    networks:
+      - savantnet
+    restart: unless-stopped
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: savantsdatabas-searxng
+    ports:
+      - "8888:8080"
+    volumes:
+      - searxng-config:/etc/searxng
+    environment:
+      # Cambia in prod con dominio reale.
+      BASE_URL: http://localhost:8888/
+      INSTANCE_NAME: savantsdatabas-searxng
+    networks:
+      - savantnet
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: savantsdatabas-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    networks:
+      - savantnet
+    restart: unless-stopped
+
+
+networks:
+  savantnet:
+    driver: bridge
+
+
+volumes:
+  redis-data:
+  searxng-config:

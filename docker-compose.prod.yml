@@ -1,0 +1,100 @@
+# ════════════════════════════════════════════════════════════════
+# docker-compose.prod.yml — VPS deploy (Hetzner CX22 o simile)
+# ────────────────────────────────────────────────────────────────
+# Solo backend + searxng + redis. Il frontend gira su Vercel
+# (free tier) e parla con questo backend via HTTPS pubblico.
+#
+# Uso sul VPS:
+#   git clone <repo> /opt/savantsdatabas
+#   cd /opt/savantsdatabas
+#   cp backend/.env.example backend/.env   # poi edita con secrets prod
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Dietro Nginx (vedi deploy/nginx/savantsdatabas.conf):
+#   - Solo backend è esposto pubblicamente (porta 8000 → 443 via Nginx)
+#   - searxng e redis restano sulla rete docker interna
+#
+# Resource limits stimate per CX22 (2 vCPU, 4 GB RAM):
+#   backend  2 GB  (Playwright/crawl4ai possono crescere)
+#   searxng  512 MB
+#   redis    256 MB
+# ════════════════════════════════════════════════════════════════
+
+services:
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: savantsdatabas-backend:prod
+    container_name: savantsdatabas-backend
+    # Solo loopback: Nginx fa reverse proxy.
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      SEARXNG_URL: http://searxng:8080
+    depends_on:
+      - redis
+      - searxng
+    networks:
+      - savantnet
+    restart: always
+    mem_limit: 2g
+    mem_reservation: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: savantsdatabas-searxng
+    # Interno: nessun port mapping esterno.
+    expose:
+      - "8080"
+    volumes:
+      - searxng-config:/etc/searxng
+    environment:
+      BASE_URL: http://searxng:8080/
+      INSTANCE_NAME: savantsdatabas-searxng-prod
+    networks:
+      - savantnet
+    restart: always
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    container_name: savantsdatabas-redis
+    expose:
+      - "6379"
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "200mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis-data:/data
+    networks:
+      - savantnet
+    restart: always
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+
+networks:
+  savantnet:
+    driver: bridge
+
+
+volumes:
+  redis-data:
+  searxng-config:

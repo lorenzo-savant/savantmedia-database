@@ -1,0 +1,62 @@
+# ════════════════════════════════════════════════════════════════
+# savantsdatabas-backend.service — systemd unit per VPS Hetzner
+# ────────────────────────────────────────────────────────────────
+# Installazione:
+#   sudo useradd --system --create-home --home-dir /opt/savantsdatabas \
+#                --shell /bin/bash savantsdatabas
+#   sudo install -d -o savantsdatabas -g savantsdatabas /etc/savantsdatabas
+#   sudo cp deploy/systemd/savantsdatabas-backend.service \
+#           /etc/systemd/system/savantsdatabas-backend.service
+#   sudo cp backend/.env /etc/savantsdatabas/backend.env
+#   sudo chmod 600 /etc/savantsdatabas/backend.env
+#   sudo chown savantsdatabas:savantsdatabas /etc/savantsdatabas/backend.env
+#
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now savantsdatabas-backend.service
+#   sudo systemctl status savantsdatabas-backend
+#   journalctl -u savantsdatabas-backend -f
+# ════════════════════════════════════════════════════════════════
+
+[Unit]
+Description=Savantsdatabas FastAPI backend (orchestrator + scrapers)
+Documentation=https://github.com/savantmedia/savantsdatabas
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=savantsdatabas
+Group=savantsdatabas
+
+WorkingDirectory=/opt/savantsdatabas/backend
+EnvironmentFile=/etc/savantsdatabas/backend.env
+
+# Uvicorn dal venv del repo. `--proxy-headers` perché siamo dietro Nginx.
+ExecStart=/opt/savantsdatabas/backend/.venv/bin/uvicorn api.main:app \
+          --host 127.0.0.1 \
+          --port 8000 \
+          --proxy-headers \
+          --forwarded-allow-ips=127.0.0.1
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# Logs vanno al journal di systemd (journalctl -u savantsdatabas-backend).
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=savantsdatabas-backend
+
+# Hardening minimo: nessun permesso di scrittura fuori dalla home dell'utente.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/savantsdatabas/backend/data /tmp
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

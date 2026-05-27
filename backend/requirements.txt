@@ -1,0 +1,53 @@
+# ════════════════════════════════════════════════════════════════
+# Savantsdatabas backend — Python deps (MVP minimale)
+# ────────────────────────────────────────────────────────────────
+# Solo quello che serve per T0 Open Data (bulk Bolagsverket/SCB).
+# Scraping/agent stack arriverà in successive iterazioni.
+# ════════════════════════════════════════════════════════════════
+
+# HTTP client (async)
+httpx>=0.27,<1.0
+
+# Scraper Tier 2 — HTML parsing + clean-text extraction
+beautifulsoup4>=4.12,<5.0
+trafilatura>=1.12,<3.0
+
+# Scraper Tier 3 — crawl4ai (Playwright wrapper + LLMExtractionStrategy).
+# Heavy dep (pulls Playwright). After install run once:
+#   .venv/Scripts/python.exe -m playwright install chromium
+# The worker degrades gracefully if crawl4ai isn't installed.
+crawl4ai>=0.4,<1.0
+
+# CLI for manual scraper debugging (`python -m scrapers.cli ...`)
+typer>=0.12,<1.0
+
+# Fast columnar processing — legge ZIP+CSV/JSON nativamente
+duckdb>=1.1,<2.0
+# DataFrame layer — required by duckdb.fetchdf()
+pandas>=2.0,<3.0
+
+# Supabase client
+supabase>=2.7,<3.0
+
+# Env file loading (compatibile con .env del backend)
+python-dotenv>=1.0,<2.0
+
+# Models + validation
+pydantic>=2.8,<3.0
+
+# CLI output / progress bars
+rich>=13.7,<14.0
+
+# API server (Fase 5 — orchestrator)
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.32,<1.0
+
+# Agent orchestrator (Fase 6+)
+langgraph>=0.2,<1.0
+langchain-core>=0.3,<1.0
+
+# T5 browser-use — autonomous agent layer (Fase 14)
+# Uncomment + reinstall when you want to actually use T5:
+# browser-use>=0.1,<1.0
+# langchain-ollama>=0.2,<1.0
+# langchain-groq>=0.2,<1.0
