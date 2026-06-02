@@ -32,6 +32,10 @@ function rowToCompany(c: CompanyRow, contacts: ContactRow[]): Company {
     },
     receptionTelefon: c.reception_telefon ?? "",
     emailInfo: c.email_info ?? "",
+    sniPrimaryKod: (c as unknown as { sni_primary_kod?: string | null }).sni_primary_kod ?? "",
+    sniBranscher: (c as unknown as { sni_branscher?: string | null }).sni_branscher ?? "",
+    sniHuvudgrupp: (c as unknown as { sni_huvudgrupp?: string | null }).sni_huvudgrupp ?? "",
+    sniAllaKoder: ((c as unknown as { sni_alla_koder?: unknown }).sni_alla_koder as string[] | null) ?? [],
     kontakter: contacts.map((k) => ({
       id: k.id,
       namn: k.namn,
@@ -50,6 +54,7 @@ function rowToCompany(c: CompanyRow, contacts: ContactRow[]): Company {
     arkiverad: c.arkiverad,
     arkiveradDatum: c.arkiverad_datum ?? "",
     arkiveradAv: c.arkiverad_av ?? "",
+    enrichedAt: (c as unknown as { enriched_at?: string | null }).enriched_at ?? "",
     skapadDatum: c.skapad_datum,
     senastAndrad: c.senast_andrad,
   };

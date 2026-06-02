@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import {
   SVERIGE_REGIONER,
   STORLEK_LABELS,
   VERIFIERINGSMETOD_LABELS,
+  SNI_HUVUDGRUPPER,
   type CompanyFormData,
   type Company,
   type ContactFormData,
@@ -49,7 +51,10 @@ const emptyForm: CompanyFormData = {
   adress: { gata: "", postnummer: "", stad: "", region: "", land: "Sverige" },
   receptionTelefon: "",
   emailInfo: "",
-  kontakter: [emptyContact, emptyContact, emptyContact],
+  sniPrimaryKod: "",
+  sniBranscher: "",
+  sniHuvudgrupp: "",
+  kontakter: [{ ...emptyContact }, { ...emptyContact }, { ...emptyContact }],
   sokFlerKontakter: true,
   internaAnteckningar: "",
 };
@@ -64,7 +69,7 @@ export function CompanyForm({ company, onSave, onCancel }: CompanyFormProps) {
       setForm(emptyForm);
       return;
     }
-    const padded: ContactFormData[] = company.kontakter.map((c) => ({
+    const mapped: ContactFormData[] = company.kontakter.map((c) => ({
       id: c.id,
       namn: c.namn,
       roll: c.roll,
@@ -77,7 +82,7 @@ export function CompanyForm({ company, onSave, onCancel }: CompanyFormProps) {
       verifieratAv: c.verifieratAv,
       verifieratDatum: c.verifieratDatum,
     }));
-    while (padded.length < 3) padded.push({ ...emptyContact });
+    while (mapped.length < 3) mapped.push({ ...emptyContact });
 
     setForm({
       organisationsnummer: company.organisationsnummer,
@@ -90,7 +95,10 @@ export function CompanyForm({ company, onSave, onCancel }: CompanyFormProps) {
       adress: { ...company.adress },
       receptionTelefon: company.receptionTelefon,
       emailInfo: company.emailInfo,
-      kontakter: padded,
+      sniPrimaryKod: company.sniPrimaryKod,
+      sniBranscher: company.sniBranscher,
+      sniHuvudgrupp: company.sniHuvudgrupp,
+      kontakter: mapped,
       sokFlerKontakter: company.sokFlerKontakter,
       internaAnteckningar: company.internaAnteckningar,
     });
@@ -121,6 +129,22 @@ export function CompanyForm({ company, onSave, onCancel }: CompanyFormProps) {
       const kontakter = [...prev.kontakter];
       kontakter[index] = { ...kontakter[index], [field]: value };
       return { ...prev, kontakter };
+    });
+  };
+
+  const addContact = () => {
+    setForm((prev) => ({
+      ...prev,
+      kontakter: [...prev.kontakter, { ...emptyContact }],
+    }));
+  };
+
+  const removeContact = (index: number) => {
+    setForm((prev) => {
+      const next = prev.kontakter.filter((_, i) => i !== index);
+      // Mantieni almeno una riga vuota nel form (visuale)
+      if (next.length === 0) next.push({ ...emptyContact });
+      return { ...prev, kontakter: next };
     });
   };
 
@@ -310,6 +334,56 @@ export function CompanyForm({ company, onSave, onCancel }: CompanyFormProps) {
         </div>
       </section>
 
+      {/* SNI / Bransch */}
+      <section>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-blue-600 mb-3 pb-2 border-b-2 border-blue-100">
+          Bransch (SNI 2007)
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">
+              SNI-kod
+            </label>
+            <input
+              type="text"
+              value={form.sniPrimaryKod}
+              onChange={(e) => updateField("sniPrimaryKod", e.target.value)}
+              placeholder="t.ex. 70220"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">
+              Huvudgrupp
+            </label>
+            <select
+              value={form.sniHuvudgrupp}
+              onChange={(e) => updateField("sniHuvudgrupp", e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">—</option>
+              {Object.entries(SNI_HUVUDGRUPPER).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {k} — {v}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">
+              Branschbeskrivning
+            </label>
+            <input
+              type="text"
+              value={form.sniBranscher}
+              onChange={(e) => updateField("sniBranscher", e.target.value)}
+              placeholder="t.ex. Konsulttjänster inom system- och programvara"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+      </section>
+
       {/* Contact info */}
       <section>
         <h3 className="text-xs font-bold uppercase tracking-wider text-blue-600 mb-3 pb-2 border-b-2 border-blue-100">
@@ -425,7 +499,7 @@ export function CompanyForm({ company, onSave, onCancel }: CompanyFormProps) {
       <section>
         <div className="flex items-end justify-between mb-3 pb-2 border-b-2 border-blue-100">
           <h3 className="text-xs font-bold uppercase tracking-wider text-blue-600">
-            Beslutsfattare
+            Beslutsfattare ({form.kontakter.length})
           </h3>
           <label className="flex items-center gap-2 text-xs text-gray-600">
             <input
@@ -449,16 +523,27 @@ export function CompanyForm({ company, onSave, onCancel }: CompanyFormProps) {
           )}
 
         <div className="space-y-4">
-          {[0, 1, 2].map((i) => (
+          {form.kontakter.map((k, i) => (
             <ContactBlock
-              key={i}
+              key={k.id ?? `new-${i}`}
               index={i}
-              contact={form.kontakter[i] || emptyContact}
+              contact={k}
               companyDomain={domainNormalized}
+              showRemove={form.kontakter.length > 1}
               onChange={(field, value) => updateContact(i, field, value)}
+              onRemove={() => removeContact(i)}
             />
           ))}
         </div>
+
+        <button
+          type="button"
+          onClick={addContact}
+          className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg"
+        >
+          <Plus className="w-4 h-4" />
+          Lägg till kontakt
+        </button>
       </section>
 
       {/* Notes */}
@@ -510,15 +595,19 @@ function ContactBlock({
   index,
   contact,
   companyDomain,
+  showRemove,
   onChange,
+  onRemove,
 }: {
   index: number;
   contact: ContactFormData;
   companyDomain: string;
+  showRemove: boolean;
   onChange: <K extends keyof ContactFormData>(
     field: K,
     value: ContactFormData[K]
   ) => void;
+  onRemove: () => void;
 }) {
   const emailCheck = useMemo(
     () => checkEmail(contact.email, companyDomain),
@@ -527,33 +616,46 @@ function ContactBlock({
 
   return (
     <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 gap-3">
         <p className="text-sm font-semibold text-gray-700">Kontakt {index + 1}</p>
-        <label className="flex items-center gap-2 text-xs text-gray-700">
-          <input
-            type="checkbox"
-            checked={contact.verifierad}
-            onChange={(e) => {
-              onChange("verifierad", e.target.checked);
-              if (e.target.checked && !contact.verifieratDatum) {
-                onChange("verifieratDatum", new Date().toISOString());
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-xs text-gray-700">
+            <input
+              type="checkbox"
+              checked={contact.verifierad}
+              onChange={(e) => {
+                onChange("verifierad", e.target.checked);
+                if (e.target.checked && !contact.verifieratDatum) {
+                  onChange("verifieratDatum", new Date().toISOString());
+                }
+                if (e.target.checked && !contact.verifieratAv) {
+                  onChange("verifieratAv", "Manuell");
+                }
+              }}
+              className="accent-emerald-600"
+            />
+            <span
+              className={
+                contact.verifierad
+                  ? "font-semibold text-emerald-700"
+                  : "text-gray-500"
               }
-              if (e.target.checked && !contact.verifieratAv) {
-                onChange("verifieratAv", "Manuell");
-              }
-            }}
-            className="accent-emerald-600"
-          />
-          <span
-            className={
-              contact.verifierad
-                ? "font-semibold text-emerald-700"
-                : "text-gray-500"
-            }
-          >
-            Verifierad
-          </span>
-        </label>
+            >
+              Verifierad
+            </span>
+          </label>
+          {showRemove && (
+            <button
+              type="button"
+              onClick={onRemove}
+              title="Ta bort kontakt"
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-red-600 hover:text-red-700 border border-red-200 bg-white hover:bg-red-50 px-2 py-1 rounded-md"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Ta bort
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">

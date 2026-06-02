@@ -12,11 +12,12 @@ import {
   RefreshCcw,
   Trash2,
   Download,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { SavantLogo } from "@/components/savant-logo";
-import { getAllCompanies } from "@/lib/data";
+import { getAllCompanies, generateTemplateCSV, downloadFile } from "@/lib/data";
 import {
   migrateCompaniesFromLocalStorage,
   getDbStats,
@@ -112,6 +113,20 @@ export default function MigratePage() {
     } finally {
       setPulling(false);
     }
+  };
+
+  const handleDownloadTemplate = () => {
+    const content = generateTemplateCSV();
+    const date = new Date().toISOString().slice(0, 10);
+    downloadFile(
+      content,
+      `savantsdatabas_mall_${date}.csv`,
+      "text/csv;charset=utf-8"
+    );
+    showToast(
+      "Mall nedladdad. Öppna i Excel, fyll i data och importera via Importera-knappen på startsidan.",
+      "success"
+    );
   };
 
   const handleClearLocal = () => {
@@ -227,6 +242,48 @@ export default function MigratePage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* CSV template for colleagues */}
+      <div className="bg-white rounded-xl border border-amber-200 shadow-sm p-5 mb-4">
+        <h2 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
+          <FileSpreadsheet className="w-4 h-4 text-amber-600" />
+          Mall för dataimport (för kollegor)
+        </h2>
+        <p className="text-sm text-gray-600 mb-3">
+          Ladda ner en CSV-mall med exakt de kolumner som behövs för att kunna
+          importeras till databasen. Mallen innehåller alla fält (företag +
+          upp till 3 kontakter per företag) samt två exempelrader: en
+          fullständig och en minimal. Öppna i Excel, fyll i dina företag och
+          importera tillbaka via{" "}
+          <strong>Importera-knappen på startsidan</strong>.
+        </p>
+        <ol className="text-xs text-gray-600 mb-4 space-y-1 list-decimal list-inside bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <li>
+            Klicka på <strong>Ladda ner mall</strong> nedan
+          </li>
+          <li>Öppna filen i Excel (eller Google Sheets / Numbers)</li>
+          <li>
+            Ta bort de två exempelraderna och fyll i dina egna företag — ett per
+            rad
+          </li>
+          <li>
+            Spara som <code className="bg-white px-1 rounded">.csv</code>{" "}
+            (UTF-8)
+          </li>
+          <li>
+            Gå till startsidan → klicka <strong>Importera</strong> → välj{" "}
+            <strong>CSV</strong> och dra in din fil
+          </li>
+          <li>
+            Verifiera att allt ser bra ut, kom sedan hit och klicka{" "}
+            <strong>Starta migration</strong> för att skicka till Supabase
+          </li>
+        </ol>
+        <Button variant="accent" size="md" onClick={handleDownloadTemplate}>
+          <Download className="w-4 h-4" />
+          Ladda ner mall (CSV)
+        </Button>
       </div>
 
       {/* Pull from Supabase to local */}

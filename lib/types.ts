@@ -44,12 +44,17 @@ export type Company = {
   adress: Address;
   receptionTelefon: string;
   emailInfo: string;
+  sniPrimaryKod: string;
+  sniBranscher: string;
+  sniHuvudgrupp: string;
+  sniAllaKoder: string[];
   kontakter: Contact[];
   sokFlerKontakter: boolean;
   internaAnteckningar: string;
   arkiverad: boolean;
   arkiveradDatum: string;
   arkiveradAv: string;
+  enrichedAt: string;
   skapadDatum: string;
   senastAndrad: string;
 };
@@ -67,6 +72,9 @@ export type CompanyFormData = {
   adress: Address;
   receptionTelefon: string;
   emailInfo: string;
+  sniPrimaryKod?: string;
+  sniBranscher?: string;
+  sniHuvudgrupp?: string;
   kontakter: ContactFormData[];
   sokFlerKontakter: boolean;
   internaAnteckningar: string;
@@ -77,10 +85,37 @@ export type Filters = {
   stad: string;
   land: string;
   storlek: StorlekKategori | "";
+  sniHuvudgrupp: string;
   endastVerifierade: boolean;
   endastMedDomain: boolean;
   andradFran: string;
   andradTill: string;
+};
+
+/** SNI 2007 sezione → descrizione svedese (16 sezioni). */
+export const SNI_HUVUDGRUPPER: Record<string, string> = {
+  A: "Jordbruk, skogsbruk och fiske",
+  B: "Utvinning av mineral",
+  C: "Tillverkning",
+  D: "Försörjning av el, gas, värme och kyla",
+  E: "Vattenförsörjning, avlopp, avfall",
+  F: "Byggverksamhet",
+  G: "Handel; reparation av motorfordon",
+  H: "Transport och magasinering",
+  I: "Hotell- och restaurangverksamhet",
+  J: "Informations- och kommunikation",
+  K: "Finans- och försäkringsverksamhet",
+  L: "Fastighetsverksamhet",
+  M: "Juridik, ekonomi, vetenskap, teknik",
+  N: "Uthyrning, fastighetsservice, stödtjänster",
+  O: "Offentlig förvaltning och försvar",
+  P: "Utbildning",
+  Q: "Vård och omsorg; sociala tjänster",
+  R: "Kultur, nöje och fritid",
+  S: "Annan serviceverksamhet",
+  T: "Förvärvsarbete i hushåll",
+  U: "Internationella organisationer",
+  Z: "Vilande / Holdingbolag",
 };
 
 export type ImportResult = {

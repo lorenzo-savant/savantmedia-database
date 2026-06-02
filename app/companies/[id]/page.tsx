@@ -19,6 +19,7 @@ import {
   ExternalLink,
   Archive,
   RotateCcw,
+  Briefcase,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -222,6 +223,19 @@ export default function CompanyDetailPage() {
                   hoppa över vid scraping
                 </span>
               )}
+              {company.sniHuvudgrupp && (
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold rounded-full border border-teal-200 bg-teal-50 text-teal-800"
+                  title={
+                    company.sniBranscher
+                      ? `SNI ${company.sniPrimaryKod || ""} — ${company.sniBranscher}`
+                      : `SNI ${company.sniPrimaryKod || ""}`
+                  }
+                >
+                  <Briefcase className="w-3 h-3" />
+                  {company.sniHuvudgrupp} · {company.sniBranscher || company.sniPrimaryKod}
+                </span>
+              )}
             </div>
           </div>
           <div className="flex gap-2 shrink-0 flex-wrap justify-end">
@@ -287,6 +301,58 @@ export default function CompanyDetailPage() {
               </div>
             </div>
           </section>
+
+          {/* SNI / Bransch */}
+          {(company.sniPrimaryKod || company.sniBranscher || company.sniHuvudgrupp) && (
+            <section>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-blue-600 mb-3 pb-2 border-b-2 border-blue-100">
+                Bransch (SNI 2007)
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-y-3 gap-x-6">
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    SNI-kod (primär)
+                  </p>
+                  <p className="text-sm text-gray-800 mt-0.5">
+                    {company.sniPrimaryKod || "-"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Huvudgrupp
+                  </p>
+                  <p className="text-sm text-gray-800 mt-0.5">
+                    {company.sniHuvudgrupp || "-"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    Branschbeskrivning
+                  </p>
+                  <p className="text-sm text-gray-800 mt-0.5">
+                    {company.sniBranscher || "-"}
+                  </p>
+                </div>
+                {company.sniAllaKoder && company.sniAllaKoder.length > 1 && (
+                  <div className="sm:col-span-3">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                      Alla SNI-koder (Ng1–Ng5)
+                    </p>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {company.sniAllaKoder.map((code) => (
+                        <span
+                          key={code}
+                          className="inline-flex items-center px-2 py-0.5 text-[11px] font-mono rounded-full border border-gray-200 bg-gray-50 text-gray-700"
+                        >
+                          {code}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* Address */}
           <section>

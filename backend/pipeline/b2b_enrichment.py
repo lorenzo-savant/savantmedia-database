@@ -45,7 +45,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from scrapers.httpbs import fetch_and_extract
+from enrichment.escalate import fetch_with_escalation
 from scrapers.searxng import SearXNGClient
 
 from ._extract_emails import (
@@ -212,23 +212,25 @@ async def _t1_collect_urls(
 
 
 async def _t2_fetch(url: str, audit: list[str]) -> tuple[str, str | None, dict]:
-    """Fetch `url` with T2 and return ``(url, content_text, metadata)``.
+    """Fetch `url` con escalation automatica T2→T4 su blocco (403/503/captcha).
 
     `content_text` is ``None`` on any error (logged into `audit`).
     `metadata` always carries at least the tier marker.
     """
     try:
-        result = await fetch_and_extract(url)
+        result = await fetch_with_escalation(url, max_attempts=2)
     except Exception as exc:  # noqa: BLE001 — defensive
-        audit.append(f"T2 fetch {url} FAILED hard: {exc!r}")
-        return url, None, {"tier": 2, "fatal_error": str(exc)}
+        audit.append(f"fetch {url} FAILED hard: {exc!r}")
+        return url, None, {"tier": 0, "fatal_error": str(exc)}
 
     if not result.ok:
-        audit.append(f"T2 fetch {url} → {result.error}")
-        return url, None, {"tier": 2, "error": result.error, **(result.metadata or {})}
+        audit.append(f"fetch {url} → {result.error}")
+        return url, None, {"tier": result.tier, "error": result.error, **(result.metadata or {})}
 
-    audit.append(f"T2 fetch {url} → {len(result.content_text or '')} chars")
-    return url, (result.content_text or ""), {"tier": 2, **(result.metadata or {})}
+    audit.append(
+        f"fetch {url} (T{result.tier}) → {len(result.content_text or '')} chars"
+    )
+    return url, (result.content_text or ""), {"tier": result.tier, **(result.metadata or {})}
 
 
 def _harvest_contacts(

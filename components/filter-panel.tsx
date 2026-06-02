@@ -6,6 +6,7 @@ import { getRegions } from "@/lib/data";
 import {
   SVERIGE_REGIONER,
   STORLEK_LABELS,
+  SNI_HUVUDGRUPPER,
   type Filters,
   type StorlekKategori,
 } from "@/lib/types";
@@ -61,6 +62,23 @@ export function FilterPanel({ filters, onApply, onClear, open }: FilterPanelProp
               {(["liten", "medel", "multinationell"] as const).map((s) => (
                 <option key={s} value={s}>
                   {STORLEK_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              Bransch (SNI)
+            </label>
+            <select
+              value={local.sniHuvudgrupp}
+              onChange={(e) => update("sniHuvudgrupp", e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Alla branscher</option>
+              {Object.entries(SNI_HUVUDGRUPPER).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {k} — {v}
                 </option>
               ))}
             </select>

@@ -8,6 +8,10 @@
 # HTTP client (async)
 httpx>=0.27,<1.0
 
+# Tier 1 — DuckDuckGo fallback when SearXNG (Docker) isn't available.
+# Pacchetto rinominato da `duckduckgo-search` a `ddgs` (2025).
+ddgs>=1.0,<2.0
+
 # Scraper Tier 2 — HTML parsing + clean-text extraction
 beautifulsoup4>=4.12,<5.0
 trafilatura>=1.12,<3.0

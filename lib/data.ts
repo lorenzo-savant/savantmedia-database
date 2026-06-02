@@ -79,6 +79,12 @@ function migrateCompany(raw: Record<string, unknown>): Company {
     },
     receptionTelefon: (r.receptionTelefon as string) || "",
     emailInfo: (r.emailInfo as string) || "",
+    sniPrimaryKod: (r.sniPrimaryKod as string) || "",
+    sniBranscher: (r.sniBranscher as string) || "",
+    sniHuvudgrupp: (r.sniHuvudgrupp as string) || "",
+    sniAllaKoder: Array.isArray(r.sniAllaKoder)
+      ? (r.sniAllaKoder as string[])
+      : [],
     kontakter: Array.isArray(r.kontakter)
       ? (r.kontakter as LegacyContact[]).map(migrateContact)
       : [],
@@ -233,6 +239,10 @@ export function addCompany(data: CompanyFormData): Company {
     adress: norm.adress,
     receptionTelefon: norm.receptionTelefon,
     emailInfo: norm.emailInfo,
+    sniPrimaryKod: norm.sniPrimaryKod ?? "",
+    sniBranscher: norm.sniBranscher ?? "",
+    sniHuvudgrupp: norm.sniHuvudgrupp ?? "",
+    sniAllaKoder: [],
     kontakter: buildContactsFromForm(norm.kontakter),
     sokFlerKontakter: norm.sokFlerKontakter,
     internaAnteckningar: norm.internaAnteckningar,
@@ -286,6 +296,9 @@ export function updateCompany(
     adress: norm.adress,
     receptionTelefon: norm.receptionTelefon,
     emailInfo: norm.emailInfo,
+    sniPrimaryKod: norm.sniPrimaryKod ?? prev.sniPrimaryKod ?? "",
+    sniBranscher: norm.sniBranscher ?? prev.sniBranscher ?? "",
+    sniHuvudgrupp: norm.sniHuvudgrupp ?? prev.sniHuvudgrupp ?? "",
     kontakter: buildContactsFromForm(norm.kontakter),
     sokFlerKontakter: norm.sokFlerKontakter,
     internaAnteckningar: norm.internaAnteckningar,
@@ -372,6 +385,8 @@ export function searchCompanies(
         f.adress.region.toLowerCase().includes(q) ||
         f.adress.land.toLowerCase().includes(q) ||
         f.emailInfo.toLowerCase().includes(q) ||
+        (f.sniBranscher || "").toLowerCase().includes(q) ||
+        (f.sniPrimaryKod || "").toLowerCase().includes(q) ||
         f.kontakter.some(
           (k) =>
             k.namn.toLowerCase().includes(q) ||
@@ -401,6 +416,12 @@ export function searchCompanies(
 
   if (filters.storlek) {
     results = results.filter((f) => f.storlekKategori === filters.storlek);
+  }
+
+  if (filters.sniHuvudgrupp) {
+    results = results.filter(
+      (f) => (f.sniHuvudgrupp || "").toUpperCase() === filters.sniHuvudgrupp.toUpperCase()
+    );
   }
 
   if (filters.endastVerifierade) {

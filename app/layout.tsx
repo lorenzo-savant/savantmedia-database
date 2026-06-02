@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Archive, Sparkles } from "lucide-react";
+import { Archive, Sparkles, Settings } from "lucide-react";
 import { ToastProvider } from "@/components/ui/toast";
 import { SavantLogo } from "@/components/savant-logo";
 import "./globals.css";
@@ -42,6 +42,13 @@ export default function RootLayout({
                 >
                   <Sparkles className="w-4 h-4" />
                   Orchestrator
+                </Link>
+                <Link
+                  href="/admin/migrate"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:text-amber-700 hover:bg-amber-50 transition-colors"
+                >
+                  <Settings className="w-4 h-4" />
+                  Admin
                 </Link>
               </nav>
             </div>

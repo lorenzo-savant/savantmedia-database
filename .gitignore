@@ -132,3 +132,6 @@ backend/data/bulk/
 # ─── T4 Playwright scraper artifacts (local only, never committed) ──
 backend/data/storage/*.json
 backend/data/screenshots/*.png
+
+.vercel
+.gstack/

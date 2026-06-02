@@ -1,0 +1,19 @@
+{
+  "name": "savantmedia-scrapers-node",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Node.js fallback scrapers for savantmedia-database. Used when Python's BeautifulSoup pipeline gets rate-limited or fails. CLI scripts called via subprocess from Python.",
+  "type": "module",
+  "scripts": {
+    "find-emails": "node find_emails.js",
+    "find-dm-email": "node find_dm_email.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "cheerio": "^1.0.0-rc.12"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
