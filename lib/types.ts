@@ -54,7 +54,7 @@ export type Company = {
   arkiverad: boolean;
   arkiveradDatum: string;
   arkiveradAv: string;
-  enrichedAt: string;
+  enrichedAt?: string;
   skapadDatum: string;
   senastAndrad: string;
 };

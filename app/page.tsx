@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Upload, Download } from "lucide-react";
+import { Plus, Upload, Download, RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
@@ -13,6 +13,7 @@ import { CompanyForm } from "@/components/company-form";
 import { ImportView, ExportView } from "@/components/import-export";
 import { SavantLogo } from "@/components/savant-logo";
 import {
+  getAllCompanies,
   getActiveCompanies,
   searchCompanies,
   addCompany,
@@ -21,7 +22,13 @@ import {
   restoreCompany,
   DuplicateOrgnrError,
 } from "@/lib/data";
+import { pullAllCompaniesFromSupabase } from "@/lib/actions/pull";
+import { migrateCompaniesFromLocalStorage } from "@/lib/actions/migrate";
 import type { Company, CompanyFormData, Filters } from "@/lib/types";
+
+const LOCAL_STORAGE_KEY = "savantmedia_foretagsdb";
+const LAST_SYNC_KEY = "savantmedia_last_sync";
+const SYNC_TTL_MS = 60 * 60 * 1000; // 1 hour — re-pull from Supabase if older
 
 const DEMO_DATA: CompanyFormData[] = [
   {
@@ -242,24 +249,88 @@ export default function HomePage() {
   const [modalTitle, setModalTitle] = useState("");
   const [modalView, setModalView] = useState<"add" | "edit" | "import" | "export" | null>(null);
   const [editCompany, setEditCompany] = useState<Company | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState<string | null>(null);
 
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
+  const pullFromSupabase = useCallback(async (silent: boolean) => {
+    setSyncing(true);
+    try {
+      const remote = await pullAllCompaniesFromSupabase();
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(remote));
+      const now = new Date().toISOString();
+      localStorage.setItem(LAST_SYNC_KEY, now);
+      setLastSync(now);
+      setCompanies(searchCompanies(searchQuery, filters));
+      if (!silent) {
+        showToast(`Synkroniserat ${remote.length} företag från Supabase.`, "success");
+      }
+    } catch (err) {
+      if (!silent) {
+        showToast(
+          `Kunde inte synkronisera från Supabase: ${err instanceof Error ? err.message : String(err)}`,
+          "error"
+        );
+      }
+    } finally {
+      setSyncing(false);
+    }
+  }, [searchQuery, filters, showToast]);
+
+  const twoWaySync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      // 1) Push local changes to Supabase (upsert by orgnr)
+      const local = getAllCompanies();
+      const pushResult = await migrateCompaniesFromLocalStorage(local);
+      // 2) Pull fresh state back (Supabase is now source of truth)
+      const remote = await pullAllCompaniesFromSupabase();
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(remote));
+      const now = new Date().toISOString();
+      localStorage.setItem(LAST_SYNC_KEY, now);
+      setLastSync(now);
+      setCompanies(searchCompanies(searchQuery, filters));
+      showToast(
+        `Synkroniserat: ${pushResult.imported} skapade + ${pushResult.updated} uppdaterade. ${remote.length} företag i databasen.`,
+        "success"
+      );
+    } catch (err) {
+      showToast(
+        `Sync misslyckades: ${err instanceof Error ? err.message : String(err)}`,
+        "error"
+      );
+    } finally {
+      setSyncing(false);
+    }
+  }, [searchQuery, filters, showToast]);
+
   useEffect(() => {
     if (dataLoaded) return;
+    if (typeof window === "undefined") return;
+    const lastSyncStr = localStorage.getItem(LAST_SYNC_KEY);
+    setLastSync(lastSyncStr);
     const existing = getActiveCompanies();
-    if (existing.length === 0) {
-      DEMO_DATA.forEach((d) => {
-        try {
-          addCompany(d);
-        } catch {
-          // ignore demo seed duplicates
+    const stale = !lastSyncStr ||
+      Date.now() - new Date(lastSyncStr).getTime() > SYNC_TTL_MS;
+    if (existing.length === 0 || stale) {
+      // Auto-pull from Supabase: source of truth for cross-machine state
+      pullFromSupabase(existing.length > 0).then(() => {
+        // If Supabase ritorna 0 (DB vuoto, errore creds), seed demo come fallback
+        if (getActiveCompanies().length === 0) {
+          DEMO_DATA.forEach((d) => {
+            try {
+              addCompany(d);
+            } catch {
+              // ignore demo seed duplicates
+            }
+          });
+          showToast("Demo-data har laddats in.", "info");
         }
       });
-      showToast("Demo-data har laddats in.", "info");
     }
     setDataLoaded(true);
-  }, [dataLoaded, showToast]);
+  }, [dataLoaded, showToast, pullFromSupabase]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -384,6 +455,16 @@ export default function HomePage() {
           filterOpen={filterOpen}
         />
         <div className="flex gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="md"
+            onClick={twoWaySync}
+            disabled={syncing}
+            title={lastSync ? `Senast synk: ${new Date(lastSync).toLocaleString("sv-SE")} — klick = push lokala ändringar + pull Supabase` : "Aldrig synkat — klick för two-way sync"}
+          >
+            <RefreshCcw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Synkar..." : "Synka"}
+          </Button>
           <Button variant="outline" size="md" onClick={() => openModalFor("import")}>
             <Upload className="w-4 h-4" /> Importera
           </Button>
@@ -395,6 +476,12 @@ export default function HomePage() {
           </Button>
         </div>
       </div>
+
+      {lastSync && (
+        <div className="text-[11px] text-gray-400 mb-3">
+          Senast synkroniserat med Supabase: {new Date(lastSync).toLocaleString("sv-SE")}
+        </div>
+      )}
 
       <FilterPanel
         filters={filters}
