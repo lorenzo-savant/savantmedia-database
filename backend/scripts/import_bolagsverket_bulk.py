@@ -311,19 +311,25 @@ def strip_label(value) -> str:
 
 
 def parse_postadress(raw) -> dict[str, str]:
-    """postadress format: `<gatuadress>$$<stad>$<postnummer>$<land>`.
-    Some have empty fields — return what we can."""
+    """postadress format: `<gatuadress>$<c/o>$<postort>$<postnummer>$<land>`.
+
+    Single '$' between five positional fields; the c/o field (index 1) is
+    often empty (`...$$...`). NB: do NOT split on '$$' — that drops the c/o
+    boundary and, when c/o is non-empty, dumps the whole string into `gata`.
+    The c/o line is intentionally discarded (no schema column for it).
+    Tolerates rows with fewer fields. Returns only street/city/postnr/land."""
     if raw is None:
         return {"gata": "", "stad": "", "postnummer": "", "land": "Sverige"}
-    s = str(raw)
-    # Split on '$$' first to separate street from rest
-    parts = s.split("$$")
-    gata = parts[0].strip() if parts else ""
-    rest = parts[1] if len(parts) > 1 else ""
-    sub = rest.split("$") if rest else []
-    stad = sub[0].strip() if len(sub) > 0 else ""
-    postnummer = sub[1].strip() if len(sub) > 1 else ""
-    land = sub[2].strip() if len(sub) > 2 else "SE-LAND"
+    f = [p.strip() for p in str(raw).split("$")]
+
+    def at(i: int) -> str:
+        return f[i] if i < len(f) else ""
+
+    gata = at(0)          # gatuadress / box
+    # at(1) = c/o — discarded
+    stad = at(2)
+    postnummer = at(3)
+    land = at(4) or "SE-LAND"
     return {
         "gata": gata,
         "stad": stad,
