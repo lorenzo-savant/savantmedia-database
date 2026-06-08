@@ -83,6 +83,94 @@ _ROLE_RULES: list[tuple[re.Pattern[str], str]] = [
 
 _PHONE_RE = re.compile(r"(?:\+46|0)[\s\-]?(?:\d[\s\-]?){6,11}\d")
 
+# Titoli / parole-azienda da rimuovere dai BORDI di un nome catturato
+# ("Jonas Blomquist Advokat" -> "Jonas Blomquist"; "Risk Management" -> "").
+_TITLE_NAME_TOKENS: frozenset[str] = frozenset(
+    {
+        "advokat", "jurist", "chef", "koncernchef", "vd", "vvd", "ceo", "cfo",
+        "cto", "coo", "executive", "chief", "partner", "konsult", "manager",
+        "direktör", "direktor", "director", "affärsområdeschef",
+        "affarsomradeschef", "senior", "head", "of", "ägare", "agare",
+        "grundare", "founder", "styrelseledamot", "ordförande", "ordforande",
+        "advisory", "capital", "fund", "global", "group", "holding", "ab",
+        "aktiebolag", "fastighets", "fastigheter", "digitals", "supply",
+        "chain", "risk", "management", "marketing", "sales", "hr", "vice",
+        "wood", "service", "invest", "ventures", "consulting",
+    }
+)
+
+# Nomi di battesimo comuni (sv/nordici/intl). Nella modalità "nome+ruolo" il
+# primo token DEVE essere uno di questi: elimina nomi-azienda/reparto che un
+# regex di bigrammi maiuscoli cattura ("Supply Chain", "Stora Enso", ...).
+_GIVEN_NAMES: frozenset[str] = frozenset(
+    {
+        # maschili
+        "lars", "mikael", "michael", "anders", "johan", "erik", "per", "karl",
+        "carl", "nils", "lennart", "peter", "thomas", "tomas", "jan", "daniel",
+        "fredrik", "hans", "gunnar", "bengt", "bo", "sven", "göran", "goran",
+        "stefan", "magnus", "mats", "mattias", "mathias", "andreas", "marcus",
+        "markus", "henrik", "patrik", "patrick", "jonas", "martin", "david",
+        "alexander", "oskar", "oscar", "emil", "filip", "philip", "viktor",
+        "victor", "gustav", "axel", "william", "lucas", "liam", "elias", "hugo",
+        "adam", "leo", "olle", "olof", "ola", "tobias", "robert", "roger",
+        "kjell", "ulf", "åke", "ake", "arne", "rolf", "jörgen", "jorgen",
+        "christer", "kent", "tommy", "roland", "björn", "bjorn", "dan", "joakim",
+        "niklas", "rikard", "richard", "mårten", "marten", "petter", "pontus",
+        "sebastian", "simon", "samuel", "isak", "anton", "felix", "theodor",
+        "vincent", "wilhelm", "albin", "edvin", "melker", "sixten", "folke",
+        "ivar", "stig", "sune", "tage", "yngve", "helge", "knut", "ragnar",
+        "jonny", "johnny", "joel", "jesper", "fabian", "kristoffer", "christoffer",
+        "ludvig", "love", "rasmus", "rickard", "tony", "claes", "klas", "håkan",
+        "hakan", "lasse", "micke", "janne", "calle",
+        # femminili
+        "anna", "maria", "margareta", "elisabeth", "eva", "kristina", "birgitta",
+        "karin", "ingrid", "sara", "lena", "emma", "hanna", "linda", "sofia",
+        "sofie", "johanna", "malin", "jenny", "annika", "helena", "camilla",
+        "cecilia", "ulrika", "åsa", "asa", "susanne", "carina", "monica",
+        "marie", "elin", "julia", "klara", "clara", "alice", "maja", "ebba",
+        "wilma", "agnes", "astrid", "saga", "alva", "olivia", "ella", "lova",
+        "stella", "signe", "ester", "elsa", "freja", "nellie", "moa", "tuva",
+        "linnea", "frida", "amanda", "josefin", "matilda", "rebecca", "therese",
+        "caroline", "charlotte", "christina", "gunilla", "inger", "barbro",
+        "berit", "britt", "gerd", "gun", "marianne", "siv", "yvonne", "lisbeth",
+        "kristin", "kerstin", "gudrun", "solveig", "cozette", "louise", "lotta",
+        "petra", "sandra", "jessica", "rebecka", "emelie", "ida", "nina",
+        "victoria", "viktoria", "isabelle", "michaela", "madeleine", "pernilla",
+    }
+)
+
+_NAME_TRANSLIT = str.maketrans(
+    {"å": "a", "ä": "a", "ö": "o", "é": "e", "è": "e", "ü": "u", "ø": "o", "æ": "a"}
+)
+
+
+def _clean_name(raw: str) -> str:
+    """Rimuove titoli/parole-azienda dai bordi del nome. '' se non resta un nome."""
+    toks = (raw or "").split()
+    while toks and toks[0].lower().strip(".,") in _TITLE_NAME_TOKENS:
+        toks.pop(0)
+    while toks and toks[-1].lower().strip(".,") in _TITLE_NAME_TOKENS:
+        toks.pop()
+    return " ".join(toks) if len(toks) >= 2 else ""
+
+
+def _looks_like_person(name: str, email: str = "") -> bool:
+    """Accetta se il 1° token è un nome noto OPPURE un token combacia con la
+    local-part dell'email (evidenza forte). Filtra nomi-azienda/reparto."""
+    toks = _norm(name).split()
+    if not toks:
+        return False
+    if toks[0] in _GIVEN_NAMES:
+        return True
+    if email:
+        local = email.split("@", 1)[0].lower().translate(_NAME_TRANSLIT)
+        local = re.sub(r"[^a-z]", "", local)
+        for t in toks:
+            tt = t.translate(_NAME_TRANSLIT)
+            if len(tt) >= 4 and tt in local:
+                return True
+    return False
+
 
 @dataclass
 class Person:
@@ -155,9 +243,11 @@ def extract_people(text: str, domain: str, source_url: str) -> dict[str, Person]
     for em in find_emails_in_text(text):
         local, _, host = em.partition("@")
         on_domain = host == domain or host.endswith("." + domain)
-        name = find_name_near_email(text, em)
+        name = _clean_name(find_name_near_email(text, em) or "")
         if not name or not is_probable_person_name(name):
             continue
+        if not _looks_like_person(name, em if on_domain else ""):
+            continue  # non un nome-persona (azienda/reparto/heading)
         p = _get(name)
         if on_domain and not p.email:
             p.email = em
@@ -173,13 +263,15 @@ def extract_people(text: str, domain: str, source_url: str) -> dict[str, Person]
 
     # 2) Anchor sui nomi+ruolo (anche senza email): persona pubblica del team.
     for m in _NAME_REGEX.finditer(text):
-        name = m.group(0)
-        if not is_probable_person_name(name):
+        name = _clean_name(m.group(0))
+        if not name or not is_probable_person_name(name):
             continue
         snip = _around(text, m.start(), m.end(), window=90)
         role = _role_in(snip)
         if not role:
             continue  # senza ruolo riconosciuto non lo contiamo (anti-rumore)
+        if not _looks_like_person(name, ""):
+            continue  # nessuna email → il 1° token dev'essere un nome noto
         p = _get(name)
         if not p.roll:
             p.roll = role
