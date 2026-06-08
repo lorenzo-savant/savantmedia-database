@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import re
 import sys
@@ -144,12 +145,27 @@ _NAME_TRANSLIT = str.maketrans(
 )
 
 
+# Suffissi-titolo: token che FINISCE con uno di questi è un titolo, non un
+# cognome ("Seniorkonsult", "Projektledare", "Ekonomichef", "Försäljningschef").
+_TITLE_STEM_RE = re.compile(
+    r"(konsult|chef|ledare|direkt[oö]r|ansvarig|advokat|jurist|r[åa]dgivare|"
+    r"specialist|ingenj[oö]r|analytiker|controller|ekonom|arkitekt|designer|"
+    r"utvecklare|s[äa]ljare|partner|del[äa]gare|grundare)$",
+    re.I,
+)
+
+
+def _is_title_token(tok: str) -> bool:
+    tl = tok.lower().strip(".,:")
+    return tl in _TITLE_NAME_TOKENS or bool(_TITLE_STEM_RE.search(tl))
+
+
 def _clean_name(raw: str) -> str:
     """Rimuove titoli/parole-azienda dai bordi del nome. '' se non resta un nome."""
     toks = (raw or "").split()
-    while toks and toks[0].lower().strip(".,") in _TITLE_NAME_TOKENS:
+    while toks and _is_title_token(toks[0]):
         toks.pop(0)
-    while toks and toks[-1].lower().strip(".,") in _TITLE_NAME_TOKENS:
+    while toks and _is_title_token(toks[-1]):
         toks.pop()
     return " ".join(toks) if len(toks) >= 2 else ""
 
@@ -324,6 +340,7 @@ def _fetch_targets(
     limit: int,
     domain: str | None,
     name_contains: list[str] | None = None,
+    offset: int = 0,
 ) -> list[CompanyRow]:
     q = (
         sb.table("companies")
@@ -332,7 +349,7 @@ def _fetch_targets(
         .not_.is_("domain", "null")
         .neq("domain", "")
         .order("foretagsnamn")
-        .limit(limit * 4)
+        .range(offset, offset + limit - 1)  # finestra per il chunking parallelo
     )
     if domain:
         q = q.eq("domain", domain)
@@ -368,34 +385,61 @@ def _fetch_targets(
 
 
 async def main(
-    limit: int, domain: str | None, apply: bool, name_contains: list[str] | None
+    limit: int,
+    domain: str | None,
+    apply: bool,
+    name_contains: list[str] | None,
+    offset: int = 0,
+    as_json: bool = False,
 ) -> None:
     sb = _supabase()
-    targets = _fetch_targets(sb, limit=limit, domain=domain, name_contains=name_contains)
-    console.print(
-        f"[bold cyan]Scan team-pages — {len(targets)} aziende con dominio "
-        f"(apply={apply})[/]\n"
+    targets = _fetch_targets(
+        sb, limit=limit, domain=domain, name_contains=name_contains, offset=offset
     )
+    if not as_json:
+        console.print(
+            f"[bold cyan]Scan team-pages — {len(targets)} aziende con dominio "
+            f"(offset={offset}, apply={apply})[/]\n"
+        )
     if not targets:
-        console.print("[yellow]Nessuna azienda con dominio trovata.[/]")
+        if as_json:
+            print(json.dumps({"scanned": 0, "people": 0, "companies": []}))
+        else:
+            console.print("[yellow]Nessuna azienda con dominio trovata.[/]")
         return
 
     total_people = 0
     companies_with_hits = 0
     inserted = 0
+    results_json: list[dict] = []
 
-    # Single-agent: sequenziale, educato.
     for c in targets:
         people = await scan_company(c)
         if not people:
-            console.print(f"[dim]-- {c.foretagsnamn[:34]:34} {c.domain:26} (niente)[/]")
+            if not as_json:
+                console.print(f"[dim]-- {c.foretagsnamn[:34]:34} {c.domain:26} (niente)[/]")
             continue
         companies_with_hits += 1
         total_people += len(people)
-        console.print(f"[green]OK[/] {c.foretagsnamn[:34]:34} [cyan]{c.domain}[/]")
-        for p in people:
-            bits = [b for b in (p.roll, p.email, p.telefon, p.linkedin) if b]
-            console.print(f"     • {p.namn}  [dim]{' | '.join(bits)}[/]")
+        if as_json:
+            results_json.append({
+                "company_id": c.id,
+                "foretagsnamn": c.foretagsnamn,
+                "domain": c.domain,
+                "people": [
+                    {
+                        "namn": p.namn, "roll": p.roll, "email": p.email,
+                        "telefon": p.telefon, "linkedin": p.linkedin,
+                        "source_url": p.source_url,
+                    }
+                    for p in people
+                ],
+            })
+        else:
+            console.print(f"[green]OK[/] {c.foretagsnamn[:34]:34} [cyan]{c.domain}[/]")
+            for p in people:
+                bits = [b for b in (p.roll, p.email, p.telefon, p.linkedin) if b]
+                console.print(f"     • {p.namn}  [dim]{' | '.join(bits)}[/]")
 
         if apply:
             for p in people:
@@ -428,7 +472,18 @@ async def main(
                         }).execute()
                     inserted += 1
                 except Exception as exc:  # noqa: BLE001
-                    console.print(f"[red]  insert fail {p.namn}: {exc}[/]")
+                    if not as_json:
+                        console.print(f"[red]  insert fail {p.namn}: {exc}[/]")
+
+    if as_json:
+        print(json.dumps({
+            "scanned": len(targets),
+            "companies_with_people": companies_with_hits,
+            "people": total_people,
+            "inserted": inserted,
+            "companies": results_json,
+        }, ensure_ascii=False))
+        return
 
     table = Table(title="Riepilogo scan team-pages")
     table.add_column("Metrica", style="cyan")
@@ -446,6 +501,7 @@ async def main(
 def _cli() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--limit", type=int, default=20)
+    p.add_argument("--offset", type=int, default=0, help="Offset per il chunking parallelo")
     p.add_argument("--domain", default=None, help="Scandisci una sola azienda (dominio)")
     p.add_argument("--apply", action="store_true", help="Salva i contatti nuovi (default: dry-run)")
     p.add_argument(
@@ -453,13 +509,19 @@ def _cli() -> None:
         default=None,
         help="Filtra per sottostringhe nel nome (csv), es. 'konsult,group,byrå,advokat'",
     )
+    p.add_argument(
+        "--json", dest="as_json", action="store_true",
+        help="Output JSON strutturato (per orchestrazione multi-agente)",
+    )
     args = p.parse_args()
     name_contains = (
         [s for s in args.name_contains.split(",") if s.strip()]
         if args.name_contains
         else None
     )
-    asyncio.run(main(args.limit, args.domain, args.apply, name_contains))
+    asyncio.run(
+        main(args.limit, args.domain, args.apply, name_contains, args.offset, args.as_json)
+    )
 
 
 if __name__ == "__main__":
