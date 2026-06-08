@@ -150,7 +150,9 @@ _NAME_TRANSLIT = str.maketrans(
 _TITLE_STEM_RE = re.compile(
     r"(konsult|chef|ledare|direkt[oö]r|ansvarig|advokat|jurist|r[åa]dgivare|"
     r"specialist|ingenj[oö]r|analytiker|controller|ekonom|arkitekt|designer|"
-    r"utvecklare|s[äa]ljare|partner|del[äa]gare|grundare)$",
+    r"utvecklare|s[äa]ljare|partner|del[äa]gare|grundare|koordinator|samordnare|"
+    r"vetenskaplig|kommersiell|kommunikat[oö]r|assistent|administrat[oö]r|"
+    r"office|financial|manager|officer|advisor|associate|trainee|praktikant)$",
     re.I,
 )
 
@@ -453,7 +455,7 @@ async def main(
                         "telefon": p.telefon or "",
                         "linkedin_url": p.linkedin or "",
                         "verifierad": has_domain_email,
-                        "verifieringsmetod": "foretagswebbplats" if has_domain_email else "",
+                        "verifieringsmetod": "foretagswebbplats" if has_domain_email else None,
                         "verifieringskalla": p.source_url,
                         "verifierat_av": "agent:harvest_team_pages",
                         "verifierat_datum": datetime.now(timezone.utc).isoformat(),
