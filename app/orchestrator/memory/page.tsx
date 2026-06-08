@@ -34,8 +34,8 @@ const KIND_FILTERS: { id: KindFilter; label: string }[] = [
   { id: "all", label: "Alla typer" },
   { id: "playbook", label: "Playbook" },
   { id: "snippet", label: "Snippet" },
-  { id: "query_log", label: "Query log" },
-  { id: "lesson", label: "Lesson" },
+  { id: "query_log", label: "Query-logg" },
+  { id: "lesson", label: "Lärdom" },
 ];
 
 export default function OrchestratorMemoryPage() {
@@ -192,7 +192,7 @@ export default function OrchestratorMemoryPage() {
         onClick={() => router.push("/orchestrator")}
         className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 mb-4"
       >
-        <ChevronLeft className="w-4 h-4" /> Tillbaka till orchestrator
+        <ChevronLeft className="w-4 h-4" /> Tillbaka till orkestratorn
       </button>
 
       {/* Header */}
@@ -200,7 +200,7 @@ export default function OrchestratorMemoryPage() {
         <SavantLogo size={32} />
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
           <Brain className="w-5 h-5 text-violet-600" />
-          Agent Memory
+          Agentminne
         </h1>
         <button
           onClick={onRefreshAll}

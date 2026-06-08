@@ -78,7 +78,9 @@ class GoogleAIOClient:
 
     async def fetch(self, query: str) -> GoogleAIOSnippet:
         url = self._build_url(query)
-        res = await fetch_and_extract(url, timeout=25.0)
+        # Query al motore (search box), non crawling di siti terzi → robots
+        # bypassato qui soltanto.
+        res = await fetch_and_extract(url, timeout=25.0, ignore_robots=True)
         snip = GoogleAIOSnippet(source_url=url)
         if not res.ok:
             return snip

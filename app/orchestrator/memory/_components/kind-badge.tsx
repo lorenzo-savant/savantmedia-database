@@ -17,12 +17,12 @@ const KIND_STYLES: Record<
   },
   query_log: {
     badge: "bg-gray-100 text-gray-700 border-gray-300",
-    label: "Query log",
+    label: "Query-logg",
     icon: History,
   },
   lesson: {
     badge: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    label: "Lesson",
+    label: "Lärdom",
     icon: Lightbulb,
   },
 };

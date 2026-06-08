@@ -46,6 +46,8 @@ from rich.table import Table
 from supabase import Client, create_client
 
 from scrapers.httpbs import fetch_and_extract
+from scrapers.email_search import find_emails_for_person_ranked
+from pipeline._extract_emails import is_probable_person_name
 
 console = Console()
 
@@ -93,21 +95,44 @@ class ContactRow:
 
 def _supabase() -> Client:
     load_dotenv()
-    return create_client(
-        os.environ["SUPABASE_URL"],
-        os.environ["SUPABASE_SECRET_KEY"],
+    load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
+    load_dotenv(
+        dotenv_path=os.path.join(os.path.dirname(__file__), "..", "..", ".env.local")
     )
+    url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL") or os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_SECRET_KEY")
+    if not url or not key:
+        console.print(
+            "[red]Mancano NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SECRET_KEY "
+            "in .env o .env.local[/]"
+        )
+        raise SystemExit(1)
+    return create_client(url, key)
+
+
+# Ruoli che identificano un decision maker. NB: la colonna `is_dm` esiste ma
+# non viene mai popolata (sempre NULL) — i DM si riconoscono dal campo `roll`.
+_DM_ROLE_KEYWORDS: tuple[str, ...] = (
+    "vd", "verkställande", "verkstallande", "ägare", "agare", "owner",
+    "grundare", "founder", "ceo", "cfo", "cto", "coo", "president",
+    "styrelse", "ordförande", "ordforande", "delägare", "delagare",
+    "partner", "direktör", "direktor", "chef",
+)
+
+
+def _is_dm_role(roll: str) -> bool:
+    r = (roll or "").lower()
+    return any(k in r for k in _DM_ROLE_KEYWORDS)
 
 
 def _fetch_targets(sb: Client, limit: int, offset: int) -> list[ContactRow]:
-    """DM senza email + con company domain noto."""
+    """DM (per ruolo) senza email + con company domain noto."""
     resp = (
         sb.table("contacts")
         .select("id, namn, roll, company_id, email")
-        .eq("is_dm", True)
         .or_("email.is.null,email.eq.")
         .order("namn")
-        .range(offset, offset + max(limit * 4, 100) - 1)
+        .range(offset, offset + max(limit * 6, 150) - 1)
         .execute()
     )
     company_ids = sorted({r["company_id"] for r in resp.data})
@@ -129,15 +154,13 @@ def _fetch_targets(sb: Client, limit: int, offset: int) -> list[ContactRow]:
         domain = (comp.get("domain") or "").strip().lower()
         if not domain:
             continue
-        # Skip nomi corrotti già noti
-        nm = (r.get("namn") or "").strip()
-        if not nm or len(nm) < 5 or len(nm) > 60 or "\n" in nm:
+        # Solo decision maker (per ruolo).
+        if not _is_dm_role(r.get("roll") or ""):
             continue
-        # Skip se sembra nome-azienda
-        if any(tok in nm for tok in (
-            "Aktiebolag", "Handelsbolag", "Holding", "Group", "Partners",
-            "Industries", "Solutions", "Stiftelsen", "Föreningen",
-        )):
+        # Skip nomi-spazzatura (menu, titoli pagina, nomi-azienda, ruoli, geo):
+        # stesso validatore usato dalla pipeline B2B per non raccogliere junk.
+        nm = (r.get("namn") or "").strip()
+        if not is_probable_person_name(nm):
             continue
         rows.append(ContactRow(
             id=r["id"],
@@ -240,6 +263,23 @@ async def _scrape_one(c: ContactRow) -> tuple[str | None, str | None, str]:
         if best_conf == "high":
             break  # stop early
         await asyncio.sleep(0.15)
+
+    # Fallback: nuova ricerca SERP + fetch-pagina per la persona
+    # (Brave/Ecosia/Bing + de-offuscazione + name-scoring). Si attiva solo se
+    # le team-page non hanno dato nulla. I risultati sono già filtrati a:
+    # email sul dominio + nome presente nella local-part (quindi non generici).
+    if best_email is None:
+        try:
+            ranked = await find_emails_for_person_ranked(
+                c.namn, c.domain, fetch_pages=True
+            )
+        except Exception:
+            ranked = []
+        if ranked:
+            best_email = ranked[0][0]
+            best_url = f"https://{c.domain}"
+            best_conf = "high" if ranked[0][1] >= 6 else "medium"
+
     return best_email, best_url, best_conf
 
 

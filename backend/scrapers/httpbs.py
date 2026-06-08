@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -31,6 +32,12 @@ from ._robots import robots_policy
 from .base import ScrapeResult
 
 logger = logging.getLogger(__name__)
+
+# Raw-HTML e-mail recall. Trafilatura keeps only the main article body, so it
+# routinely drops the footer / `mailto:` block where Swedish sites put their
+# contact address. We pull addresses straight from the raw HTML and append them
+# to `content_text` so every downstream regex extractor can see them.
+_RAW_EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
 
 # URL substrings that strongly suggest "don't scrape me, kthx".
 # Lightweight heuristic — not a robots.txt parser. The real robots.txt check
@@ -214,6 +221,31 @@ async def fetch_and_extract(
         )
     except Exception as exc:  # noqa: BLE001
         metadata["trafilatura_md_error"] = str(exc)
+
+    # E-mail recall from raw HTML — mailto: links first (most reliable), then a
+    # regex over the whole document to catch footer text addresses. Appended to
+    # content_text so email_search / b2b extractors pick them up.
+    try:
+        page_emails: list[str] = []
+        for a in soup.select('a[href^="mailto:"], a[href^="MAILTO:"]'):
+            href = a.get("href") or ""
+            addr = href.split(":", 1)[-1].split("?", 1)[0].strip()
+            if addr:
+                page_emails.append(addr)
+        page_emails.extend(_RAW_EMAIL_RE.findall(html or ""))
+        seen_e: set[str] = set()
+        block: list[str] = []
+        for e in page_emails:
+            el = e.strip().lower()
+            if el and el not in seen_e:
+                seen_e.add(el)
+                block.append(e.strip())
+            if len(block) >= 50:
+                break
+        if block:
+            content_text = (content_text or "") + "\n\nKontakt e-post: " + " ".join(block)
+    except Exception:  # noqa: BLE001 — email recall must never break extraction
+        pass
 
     return ScrapeResult(
         tier=2,

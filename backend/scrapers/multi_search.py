@@ -59,7 +59,11 @@ class _BaseHtmlSearchClient:
 
     async def search(self, query: str, limit: int = 10) -> list[ScrapeResult]:
         url = self._build_url(query)
-        res = await fetch_and_extract(url, timeout=20.0)
+        # Search engines disallow /search in robots.txt — but we're using the
+        # public search box as a meta-query, not crawling their result pages for
+        # republication. robots is bypassed HERE ONLY; company sites fetched
+        # downstream still fully respect robots.txt.
+        res = await fetch_and_extract(url, timeout=20.0, ignore_robots=True)
         if not res.ok:
             return [
                 ScrapeResult(

@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { SavantLogo } from "@/components/savant-logo";
 import { PromptSuggestions } from "./_components/prompt-suggestions";
+import { DataCaptureButtons } from "./_components/data-capture-buttons";
 import { formatDate } from "@/lib/utils";
 import {
   requestPlan,
@@ -366,7 +367,7 @@ export default function OrchestratorPage() {
         <SavantLogo size={32} />
         <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-violet-600" />
-          Orchestrator
+          Orkestrator
         </h1>
       </div>
       <p className="text-sm text-gray-500 mb-6">
@@ -408,7 +409,7 @@ export default function OrchestratorPage() {
           title="Bläddra och sök i agentens långtidsminne"
         >
           <Brain className="w-4 h-4" />
-          Agent Memory
+          Agentminne
         </button>
       </div>
 
@@ -423,6 +424,8 @@ export default function OrchestratorPage() {
             Var konkret om bransch, region och rollerna du letar efter. Agenten
             använder vault-anteckningar (RAG) för att undvika dubbelarbete.
           </p>
+
+          <DataCaptureButtons onPick={setPrompt} disabled={pendingPlan} />
 
           <PromptSuggestions onPick={setPrompt} disabled={pendingPlan} />
 
@@ -665,7 +668,7 @@ function ActivePlanView({
             onClick={onApprove}
             disabled={pending || selectedCount === 0}
           >
-            {pending ? "Godkänner..." : "Approva godkända steg"}
+            {pending ? "Godkänner..." : "Godkänn markerade steg"}
             <CheckCircle2 className="w-4 h-4" />
           </Button>
         </div>

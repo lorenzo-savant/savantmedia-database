@@ -115,9 +115,10 @@ class GoogleClient:
         self, query: str, limit: int = 10
     ) -> list[ScrapeResult]:
         url = self._build_url(query, num=limit)
-        # fetch_and_extract attiva già: rate_limit per-domain, human_delay,
-        # robots.txt (Google permette `/search?q=` in robots).
-        res = await fetch_and_extract(url, timeout=25.0)
+        # fetch_and_extract attiva: rate_limit per-domain + human_delay. robots
+        # bypassato qui: è una query al motore di ricerca, non crawling di siti
+        # terzi (gli URL aziendali scaricati a valle rispettano robots.txt).
+        res = await fetch_and_extract(url, timeout=25.0, ignore_robots=True)
         if not res.ok:
             return [
                 ScrapeResult(
