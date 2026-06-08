@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Upload, Download, RefreshCcw } from "lucide-react";
+import { Plus, Upload, Download, RefreshCcw, ArrowDownUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
@@ -236,11 +236,52 @@ function isFilterActive(key: keyof Filters, value: Filters[keyof Filters]): bool
   return !!value;
 }
 
+// ── Sortering (externt filter ovanför listan) ────────────────────────────────
+type SortKey = "namn-asc" | "namn-desc" | "storlek-asc" | "storlek-desc";
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: "namn-asc", label: "Namn A–Ö" },
+  { value: "namn-desc", label: "Namn Ö–A" },
+  { value: "storlek-asc", label: "Storlek: liten → stor" },
+  { value: "storlek-desc", label: "Storlek: stor → liten" },
+];
+
+const SIZE_RANK: Record<string, number> = { liten: 1, medel: 2, multinationell: 3 };
+
+/** Sorteringsvärde för storlek: kategori först, antal anställda som tiebreak. */
+function sizeValue(c: Company): number {
+  const rank = SIZE_RANK[c.storlekKategori] ?? 0;
+  const emp = typeof c.antalAnstallda === "number" ? c.antalAnstallda : 0;
+  return rank * 1_000_000 + emp;
+}
+
+function sortCompanies(list: Company[], sortBy: SortKey): Company[] {
+  const arr = [...list];
+  const byName = (a: Company, b: Company) =>
+    a.foretagsnamn.localeCompare(b.foretagsnamn, "sv");
+  switch (sortBy) {
+    case "namn-asc":
+      arr.sort(byName);
+      break;
+    case "namn-desc":
+      arr.sort((a, b) => byName(b, a));
+      break;
+    case "storlek-asc":
+      arr.sort((a, b) => sizeValue(a) - sizeValue(b) || byName(a, b));
+      break;
+    case "storlek-desc":
+      arr.sort((a, b) => sizeValue(b) - sizeValue(a) || byName(a, b));
+      break;
+  }
+  return arr;
+}
+
 export default function HomePage() {
   const { showToast } = useToast();
   const router = useRouter();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<SortKey>("namn-asc");
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [filterOpen, setFilterOpen] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -432,6 +473,11 @@ export default function HomePage() {
     setFilterOpen(false);
   };
 
+  const sortedCompanies = useMemo(
+    () => sortCompanies(companies, sortBy),
+    [companies, sortBy]
+  );
+
   const activeFilterEntries = (Object.entries(filters) as [keyof Filters, Filters[keyof Filters]][])
     .filter(([k, v]) => isFilterActive(k, v));
   const hasActiveFilters = activeFilterEntries.length > 0;
@@ -513,9 +559,26 @@ export default function HomePage() {
             ))}
           </div>
         )}
+
+        <label className="ml-auto inline-flex items-center gap-1.5 text-gray-500">
+          <ArrowDownUp className="w-4 h-4" />
+          <span className="text-xs font-medium hidden sm:inline">Sortera:</span>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortKey)}
+            className="px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none cursor-pointer"
+            aria-label="Sortera företagslistan"
+          >
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
-      {companies.length === 0 ? (
+      {sortedCompanies.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 gap-4">
           <SavantLogo size={80} rounded="2xl" className="opacity-30" />
           <h3 className="text-lg font-semibold text-gray-500">Inga företag hittades</h3>
@@ -525,7 +588,7 @@ export default function HomePage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {companies.map((company) => (
+          {sortedCompanies.map((company) => (
             <CompanyCard
               key={company.id}
               company={company}
