@@ -201,14 +201,43 @@ class SearXNGClient:
             ]
 
         def _do_search() -> list[dict[str, Any]]:
-            with DDGS() as ddgs:
-                return list(
-                    ddgs.text(
-                        query,
-                        max_results=limit,
-                        region="se-sv",
-                    )
-                )
+            # Rotate DDG backends — under volume a single backend gets
+            # rate-limited (empty/202). Try several, return first non-empty.
+            # Defensive: older/newer ddgs may not accept `backend=` → retry plain.
+            import time as _time
+
+            attempts: list[dict[str, Any]] = [
+                {"backend": "auto"},
+                {"backend": "html"},
+                {"backend": "lite"},
+                {},  # library default — last resort
+            ]
+            last_exc: Exception | None = None
+            for kw in attempts:
+                try:
+                    with DDGS() as ddgs:
+                        res = list(
+                            ddgs.text(query, max_results=limit, region="se-sv", **kw)
+                        )
+                    if res:
+                        return res
+                except TypeError:
+                    # this ddgs version rejects the `backend` kwarg — try plain once
+                    try:
+                        with DDGS() as ddgs:
+                            res = list(
+                                ddgs.text(query, max_results=limit, region="se-sv")
+                            )
+                        return res
+                    except Exception as exc:  # noqa: BLE001
+                        last_exc = exc
+                        break
+                except Exception as exc:  # noqa: BLE001
+                    last_exc = exc
+                    _time.sleep(0.6)  # brief backoff before next backend
+            if last_exc:
+                raise last_exc
+            return []
 
         try:
             raw = await asyncio.to_thread(_do_search)

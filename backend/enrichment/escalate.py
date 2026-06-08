@@ -33,7 +33,11 @@ _PATTERN_CAPTCHA = re.compile(
     re.IGNORECASE,
 )
 
-_BLOCKED_STATUSES: frozenset[int] = frozenset({403, 503})
+# 403/503 = WAF/forbidden; 429 = rate limit (the dominant block under volume);
+# 520-526 = Cloudflare origin errors. All warrant escalating httpx → Playwright.
+_BLOCKED_STATUSES: frozenset[int] = frozenset(
+    {403, 429, 503, 520, 521, 522, 523, 524, 525, 526}
+)
 
 
 def _is_blocking_signal(result: ScrapeResult) -> tuple[bool, str]:

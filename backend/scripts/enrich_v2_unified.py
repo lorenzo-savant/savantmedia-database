@@ -45,7 +45,8 @@ from rich.table import Table
 from supabase import Client, create_client
 
 from scrapers import unified_company_lookup
-from scrapers.httpbs import fetch_and_extract
+from scrapers.httpbs import fetch_and_extract  # noqa: F401 (kept for compatibility)
+from enrichment.escalate import fetch_with_escalation
 
 console = Console()
 
@@ -134,7 +135,8 @@ async def _extract_email_from_homepage(domain: str) -> str | None:
     for path in ("/", "/kontakt/", "/contact/", "/om-oss/"):
         url = f"https://{domain}{path}"
         try:
-            res = await fetch_and_extract(url, timeout=15.0)
+            # httpx (BS4) first; auto-escalate to Playwright stealth on block.
+            res = await fetch_with_escalation(url, timeout=15.0, max_attempts=2)
         except Exception:
             continue
         if not res.ok or not res.content_text:

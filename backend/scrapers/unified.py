@@ -33,6 +33,7 @@ from .multi_search import BraveClient, EcosiaClient, BingClient
 from .searxng import SearXNGClient
 from .google_maps import GoogleMapsClient, GoogleMapsPlace
 from .google_aio import GoogleAIOClient, GoogleAIOSnippet
+from .exa_search import ExaClient, exa_enabled
 
 
 @dataclass
@@ -113,30 +114,42 @@ async def unified_company_lookup(
     base_query = f'"{foretagsnamn}"' + (f" {stad}" if stad else "")
     site_se_query = f'{base_query} hemsida'
 
-    brave = BraveClient()
-    ecosia = EcosiaClient()
-    bing = BingClient()
-    searxng = SearXNGClient()
     maps = GoogleMapsClient()
     aio = GoogleAIOClient()
 
     tasks: dict[str, asyncio.Task] = {}
-    tasks["searxng"] = asyncio.create_task(
-        _safe(searxng.search(site_se_query, limit=limit_per_engine),
-              "searxng", out.errors)
-    )
-    tasks["brave"] = asyncio.create_task(
-        _safe(brave.search(site_se_query, limit=limit_per_engine),
-              "brave", out.errors)
-    )
-    tasks["ecosia"] = asyncio.create_task(
-        _safe(ecosia.search(site_se_query, limit=limit_per_engine),
-              "ecosia", out.errors)
-    )
-    tasks["bing"] = asyncio.create_task(
-        _safe(bing.search(site_se_query, limit=limit_per_engine),
-              "bing", out.errors)
-    )
+
+    # Strategia websearch: se EXA_API_KEY è presente, Exa è il backend primario
+    # (no ban per-IP) e SALTIAMO i client HTML rate-limitati. Altrimenti
+    # fallback su SearXNG/Brave/Ecosia/Bing come prima.
+    if exa_enabled():
+        tasks["exa"] = asyncio.create_task(
+            _safe(
+                ExaClient().search(base_query, limit=limit_per_engine, category="company"),
+                "exa", out.errors,
+            )
+        )
+    else:
+        searxng = SearXNGClient()
+        brave = BraveClient()
+        ecosia = EcosiaClient()
+        bing = BingClient()
+        tasks["searxng"] = asyncio.create_task(
+            _safe(searxng.search(site_se_query, limit=limit_per_engine),
+                  "searxng", out.errors)
+        )
+        tasks["brave"] = asyncio.create_task(
+            _safe(brave.search(site_se_query, limit=limit_per_engine),
+                  "brave", out.errors)
+        )
+        tasks["ecosia"] = asyncio.create_task(
+            _safe(ecosia.search(site_se_query, limit=limit_per_engine),
+                  "ecosia", out.errors)
+        )
+        tasks["bing"] = asyncio.create_task(
+            _safe(bing.search(site_se_query, limit=limit_per_engine),
+                  "bing", out.errors)
+        )
     if use_maps:
         tasks["maps"] = asyncio.create_task(
             _safe(maps.lookup(base_query), "maps", out.errors)
@@ -150,9 +163,9 @@ async def unified_company_lookup(
     results = await asyncio.gather(*tasks.values(), return_exceptions=True)
     by_engine = dict(zip(tasks.keys(), results, strict=True))
 
-    # Aggregate SERP results + domain candidates
+    # Aggregate SERP results + domain candidates (Exa first — most authoritative)
     seen_domains: set[str] = set()
-    for engine in ("brave", "ecosia", "bing", "searxng"):
+    for engine in ("exa", "brave", "ecosia", "bing", "searxng"):
         r = by_engine.get(engine)
         if r is None or isinstance(r, Exception):
             continue
