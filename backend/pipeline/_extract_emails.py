@@ -187,6 +187,10 @@ _NON_NAME_TOKENS: frozenset[str] = frozenset(
         "welcome", "välkommen", "valkommen", "house", "center", "centrum",
         "köpcentrum", "kopcentrum", "kvalitet", "quality", "concert", "south",
         "north", "east", "west", "stra", "straße", "strasse", "flooring",
+        # contact-label words that look like a surname next to a Capitalised
+        # company token (e.g. "Sinf Telefon", "Acme Epost")
+        "telefon", "tel", "phone", "epost", "e-post", "fax", "mobil",
+        "adress", "address", "vaxel", "växel", "reception", "support",
     }
 )
 
@@ -409,6 +413,7 @@ if __name__ == "__main__":
         "Kontaktieren Sie", "Händlerseite Von", "Plovdiv Bulgarien",
         "South Industrial", "Concert House", "Flooring Inc",
         "Hermods Kvalitet", "VD The Swedish", "Nedyalka Shileva Stra",
+        "Sinf Telefon", "Acme Epost", "Bolaget Adress",
     ]:
         _check(f"reject junk {junk!r}", is_probable_person_name(junk), False)
     for real in [

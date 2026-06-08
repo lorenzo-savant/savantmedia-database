@@ -227,7 +227,12 @@ async def scan_company(c: CompanyRow, max_pages: int = 10) -> list[Person]:
     ]
 
 
-def _fetch_targets(sb: Client, limit: int, domain: str | None) -> list[CompanyRow]:
+def _fetch_targets(
+    sb: Client,
+    limit: int,
+    domain: str | None,
+    name_contains: list[str] | None = None,
+) -> list[CompanyRow]:
     q = (
         sb.table("companies")
         .select("id, foretagsnamn, domain")
@@ -235,10 +240,16 @@ def _fetch_targets(sb: Client, limit: int, domain: str | None) -> list[CompanyRo
         .not_.is_("domain", "null")
         .neq("domain", "")
         .order("foretagsnamn")
-        .limit(limit * 3)
+        .limit(limit * 4)
     )
     if domain:
         q = q.eq("domain", domain)
+    if name_contains:
+        # Targeting: aziende il cui nome contiene una di queste sottostringhe
+        # (konsult/group/byrå/advokat…) → molto più probabili ad avere team page.
+        clause = ",".join(f"foretagsnamn.ilike.*{s.strip()}*" for s in name_contains if s.strip())
+        if clause:
+            q = q.or_(clause)
     resp = q.execute()
 
     rows: list[CompanyRow] = []
@@ -264,9 +275,11 @@ def _fetch_targets(sb: Client, limit: int, domain: str | None) -> list[CompanyRo
     return rows
 
 
-async def main(limit: int, domain: str | None, apply: bool) -> None:
+async def main(
+    limit: int, domain: str | None, apply: bool, name_contains: list[str] | None
+) -> None:
     sb = _supabase()
-    targets = _fetch_targets(sb, limit=limit, domain=domain)
+    targets = _fetch_targets(sb, limit=limit, domain=domain, name_contains=name_contains)
     console.print(
         f"[bold cyan]Scan team-pages — {len(targets)} aziende con dominio "
         f"(apply={apply})[/]\n"
@@ -343,8 +356,18 @@ def _cli() -> None:
     p.add_argument("--limit", type=int, default=20)
     p.add_argument("--domain", default=None, help="Scandisci una sola azienda (dominio)")
     p.add_argument("--apply", action="store_true", help="Salva i contatti nuovi (default: dry-run)")
+    p.add_argument(
+        "--name-contains",
+        default=None,
+        help="Filtra per sottostringhe nel nome (csv), es. 'konsult,group,byrå,advokat'",
+    )
     args = p.parse_args()
-    asyncio.run(main(args.limit, args.domain, args.apply))
+    name_contains = (
+        [s for s in args.name_contains.split(",") if s.strip()]
+        if args.name_contains
+        else None
+    )
+    asyncio.run(main(args.limit, args.domain, args.apply, name_contains))
 
 
 if __name__ == "__main__":
