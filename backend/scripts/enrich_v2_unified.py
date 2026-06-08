@@ -71,10 +71,16 @@ class CompanyRow:
 
 def _supabase() -> Client:
     load_dotenv()
-    return create_client(
-        os.environ["SUPABASE_URL"],
-        os.environ["SUPABASE_SECRET_KEY"],
+    load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
+    load_dotenv(
+        dotenv_path=os.path.join(os.path.dirname(__file__), "..", "..", ".env.local")
     )
+    url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL") or os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_SECRET_KEY")
+    if not url or not key:
+        console.print("[red]Mancano NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SECRET_KEY[/]")
+        raise SystemExit(1)
+    return create_client(url, key)
 
 
 def _name_tokens(name: str) -> list[str]:

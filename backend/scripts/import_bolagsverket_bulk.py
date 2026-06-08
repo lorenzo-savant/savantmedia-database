@@ -95,21 +95,25 @@ SOURCES: dict[str, Source] = {
 
 
 def load_env() -> None:
-    """Load backend/.env (looked up relative to this file's parent.parent)."""
+    """Load env from backend/.env then repo-root .env / .env.local (whichever exist)."""
     here = Path(__file__).resolve()
-    env_path = here.parent.parent / ".env"
-    if env_path.exists():
-        load_dotenv(env_path)
-    else:
-        load_dotenv()  # fallback PWD
+    for p in (
+        here.parent.parent / ".env",             # backend/.env
+        here.parent.parent.parent / ".env",       # repo/.env
+        here.parent.parent.parent / ".env.local",  # repo/.env.local
+    ):
+        if p.exists():
+            load_dotenv(p)
+    load_dotenv()  # PWD fallback
 
 
 def get_supabase() -> Client:
-    url = os.environ.get("SUPABASE_URL")
+    url = os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
     key = os.environ.get("SUPABASE_SECRET_KEY")
     if not url or not key:
         console.print(
-            "[red]ERROR[/red]: SUPABASE_URL and SUPABASE_SECRET_KEY required in backend/.env"
+            "[red]ERROR[/red]: SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL and "
+            "SUPABASE_SECRET_KEY required in .env / .env.local"
         )
         sys.exit(2)
     return create_client(url, key)
