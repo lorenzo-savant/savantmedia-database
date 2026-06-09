@@ -67,20 +67,25 @@ function rowToCompany(c: CompanyRow, contacts: ContactRow[]): Company {
 // PostgREST caps a single response at `db.max_rows` (1000 by default). With a
 // plain .select("*") any table beyond that silently truncates — which is why
 // CSV/JSON exports only contained part of the data. Page through with .range()
-// (ordered by a stable unique key so pages never skip or overlap) until a short
-// page signals the end.
+// (ordered by a stable unique key so pages never skip or overlap) until an
+// empty page signals the end.
+//
+// NB: the server also caps each .range() response at db.max_rows. If that cap is
+// below PAGE, a request returns fewer rows than asked — so we advance `from` by
+// the number of rows actually received (never by PAGE) and stop only on an empty
+// page. This stays correct for any max_rows, at the cost of one final empty request.
 const PAGE = 1000;
 
 async function fetchAllRows<T>(
   build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
 ): Promise<T[]> {
   const out: T[] = [];
-  for (let from = 0; ; from += PAGE) {
+  for (let from = 0; ; ) {
     const { data, error } = await build(from, from + PAGE - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
     out.push(...data);
-    if (data.length < PAGE) break;
+    from += data.length;
   }
   return out;
 }

@@ -944,10 +944,11 @@ export function generateTemplateCSV(): string {
 
   const rows = [headers, example1, example2]
     .map((row) => row.map(escape).join(","))
-    .join("\n");
+    .join("\r\n");
 
-  // BOM for Excel UTF-8 compatibility
-  return "﻿" + rows + "\n";
+  // BOM for Excel UTF-8 compatibility; CRLF (RFC 4180) so the downloaded
+  // template opens as proper rows — not one giant line — in Excel/Windows viewers.
+  return "﻿" + rows + "\r\n";
 }
 
 export function downloadFile(

@@ -28,7 +28,6 @@ import type { Company, CompanyFormData, Filters } from "@/lib/types";
 
 const LOCAL_STORAGE_KEY = "savantmedia_foretagsdb";
 const LAST_SYNC_KEY = "savantmedia_last_sync";
-const SYNC_TTL_MS = 60 * 60 * 1000; // 1 hour — re-pull from Supabase if older
 
 const DEMO_DATA: CompanyFormData[] = [
   {
@@ -308,12 +307,12 @@ export default function HomePage() {
         showToast(`Synkroniserat ${remote.length} företag från Supabase.`, "success");
       }
     } catch (err) {
-      if (!silent) {
-        showToast(
-          `Kunde inte synkronisera från Supabase: ${err instanceof Error ? err.message : String(err)}`,
-          "error"
-        );
-      }
+      // Always surface sync failures — a silently-failed pull leaves the user
+      // staring at a stale/partial local cache with no idea why.
+      showToast(
+        `Kunde inte synkronisera från Supabase: ${err instanceof Error ? err.message : String(err)}`,
+        "error"
+      );
     } finally {
       setSyncing(false);
     }
@@ -352,24 +351,23 @@ export default function HomePage() {
     const lastSyncStr = localStorage.getItem(LAST_SYNC_KEY);
     setLastSync(lastSyncStr);
     const existing = getActiveCompanies();
-    const stale = !lastSyncStr ||
-      Date.now() - new Date(lastSyncStr).getTime() > SYNC_TTL_MS;
-    if (existing.length === 0 || stale) {
-      // Auto-pull from Supabase: source of truth for cross-machine state
-      pullFromSupabase(existing.length > 0).then(() => {
-        // If Supabase ritorna 0 (DB vuoto, errore creds), seed demo come fallback
-        if (getActiveCompanies().length === 0) {
-          DEMO_DATA.forEach((d) => {
-            try {
-              addCompany(d);
-            } catch {
-              // ignore demo seed duplicates
-            }
-          });
-          showToast("Demo-data har laddats in.", "info");
-        }
-      });
-    }
+    // Always pull from Supabase on load — Supabase is the source of truth and the
+    // local cache is only a fast first paint. Gating on a TTL let a stale/partial
+    // cache (e.g. synced before the DB grew) persist and hide rows. Cheap for an
+    // internal-sized dataset; the pull below overwrites the cache wholesale.
+    pullFromSupabase(existing.length > 0).then(() => {
+      // If Supabase ritorna 0 (DB vuoto, errore creds), seed demo come fallback
+      if (getActiveCompanies().length === 0) {
+        DEMO_DATA.forEach((d) => {
+          try {
+            addCompany(d);
+          } catch {
+            // ignore demo seed duplicates
+          }
+        });
+        showToast("Demo-data har laddats in.", "info");
+      }
+    });
     setDataLoaded(true);
   }, [dataLoaded, showToast, pullFromSupabase]);
 
