@@ -86,6 +86,18 @@ def _norm_email(s: str | None) -> str | None:
     return s
 
 
+def _norm_domain(s: str | None) -> str | None:
+    if not s:
+        return None
+    s = s.strip().lower().replace("https://", "").replace("http://", "").lstrip("/")
+    if s.startswith("www."):
+        s = s[4:]
+    s = s.split("/")[0].split(":")[0].strip()
+    if "." not in s or " " in s or len(s) < 4:
+        return None
+    return s or None
+
+
 def _norm_phone(s: str | None) -> str | None:
     if not s:
         return None
@@ -133,12 +145,32 @@ def main(dry_run: bool) -> None:
     sb = _sb()
     now = datetime.now(timezone.utc).isoformat()
     stats = {"companies": 0, "emails_set": 0, "contacts_inserted": 0,
-             "skipped": 0, "errors": 0}
+             "domains_set": 0, "skipped": 0, "errors": 0}
 
     for e in entries:
         cid = e.get("id")
         dms = e.get("dm") or []
-        if not cid or not dms:
+        if not cid:
+            continue
+        # capture a domain discovered for a no-domain company (set only if empty)
+        dom = _norm_domain(e.get("domain"))
+        if dom and not dry_run:
+            try:
+                comp = sb.table("companies").select("id, domain").eq(
+                    "id", cid).limit(1).execute().data
+                if comp and not (comp[0].get("domain") or "").strip():
+                    sb.table("companies").update({"domain": dom}).eq(
+                        "id", cid).execute()
+                    sb.table("sources").insert({
+                        "company_id": cid, "field_name": "companies.domain",
+                        "source_url": f"https://{dom}", "scraper_tier": 2,
+                        "raw_excerpt": f"domain found during DM hunt: {dom}"[:500],
+                        "critic_note": "apply_dm_results.py — domain via DM subagent",
+                    }).execute()
+                    stats["domains_set"] += 1
+            except Exception:  # noqa: BLE001
+                pass
+        if not dms:
             continue
         stats["companies"] += 1
         # contatti attuali dell'azienda

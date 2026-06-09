@@ -62,7 +62,7 @@ def _fetch_all(sb, table, select):
     return rows
 
 
-def main(size: int, only_domain: bool) -> None:
+def main(size: int, only_domain: bool, no_domain: bool) -> None:
     sb = _sb()
     companies = [c for c in _fetch_all(
         sb, "companies",
@@ -85,6 +85,8 @@ def main(size: int, only_domain: bool) -> None:
             continue
         domain = (c.get("domain") or "").strip()
         if only_domain and not domain:
+            continue
+        if no_domain and domain:
             continue
         known = [
             {"namn": k["namn"], "roll": k.get("roll") or "",
@@ -129,5 +131,7 @@ if __name__ == "__main__":
     p.add_argument("--size", type=int, default=18)
     p.add_argument("--only-domain", action="store_true",
                    help="solo aziende con dominio noto (resa alta)")
+    p.add_argument("--no-domain", action="store_true",
+                   help="solo aziende SENZA dominio noto (resa bassa, va trovato il sito)")
     a = p.parse_args()
-    main(a.size, a.only_domain)
+    main(a.size, a.only_domain, a.no_domain)
