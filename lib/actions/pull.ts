@@ -64,17 +64,38 @@ function rowToCompany(c: CompanyRow, contacts: ContactRow[]): Company {
  * Returns every company (active + archived) from Supabase, mapped to the
  * frontend Company type. The browser will overwrite localStorage with this.
  */
+// PostgREST caps a single response at `db.max_rows` (1000 by default). With a
+// plain .select("*") any table beyond that silently truncates — which is why
+// CSV/JSON exports only contained part of the data. Page through with .range()
+// (ordered by a stable unique key so pages never skip or overlap) until a short
+// page signals the end.
+const PAGE = 1000;
+
+async function fetchAllRows<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await build(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    out.push(...data);
+    if (data.length < PAGE) break;
+  }
+  return out;
+}
+
 export async function pullAllCompaniesFromSupabase(): Promise<Company[]> {
   const sb = getSupabaseAdmin();
 
-  const [{ data: companies, error: cErr }, { data: contacts, error: kErr }] =
-    await Promise.all([
-      sb.from("companies").select("*").order("senast_andrad", { ascending: false }),
-      sb.from("contacts").select("*"),
-    ]);
-
-  if (cErr) throw cErr;
-  if (kErr) throw kErr;
+  const [companies, contacts] = await Promise.all([
+    fetchAllRows<CompanyRow>((from, to) =>
+      sb.from("companies").select("*").order("id", { ascending: true }).range(from, to),
+    ),
+    fetchAllRows<ContactRow>((from, to) =>
+      sb.from("contacts").select("*").order("id", { ascending: true }).range(from, to),
+    ),
+  ]);
 
   const byCompany = new Map<string, ContactRow[]>();
   for (const k of contacts ?? []) {

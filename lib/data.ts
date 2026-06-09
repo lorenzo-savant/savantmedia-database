@@ -126,6 +126,12 @@ function saveCompanies(data: Company[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
+/** Overwrite the entire local cache (used by sync/export to refresh from Supabase). */
+export function replaceAllCompanies(data: Company[]): void {
+  if (typeof window === "undefined") return;
+  saveCompanies(data);
+}
+
 /** Returns active (non-archived) companies. */
 export function getActiveCompanies(): Company[] {
   return getAllCompanies().filter((c) => !c.arkiverad);
@@ -568,7 +574,9 @@ export function exportCSV(ids?: string[]): string {
     return [...base, ...kontaktCells, csvEscape(f.skapadDatum), csvEscape(f.senastAndrad)].join(",");
   });
 
-  return "﻿" + headers.join(",") + "\n" + rows.join("\n");
+  // CRLF line endings (RFC 4180): some Windows CSV viewers do not break rows on
+  // a lone LF and render the whole file as one giant line. BOM keeps Excel UTF-8.
+  return "﻿" + [headers.join(","), ...rows].join("\r\n") + "\r\n";
 }
 
 function csvParseLine(line: string): string[] {

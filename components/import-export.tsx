@@ -12,7 +12,9 @@ import {
   importCSV,
   searchCompanies,
   generateTemplateCSV,
+  replaceAllCompanies,
 } from "@/lib/data";
+import { pullAllCompaniesFromSupabase } from "@/lib/actions/pull";
 import { useToast } from "@/components/ui/toast";
 import type { Filters } from "@/lib/types";
 
@@ -196,12 +198,30 @@ export function ExportView({ searchQuery, filters, onComplete }: ExportViewProps
   const { showToast } = useToast();
   const [type, setType] = useState<"all" | "visible" | "single">("all");
   const [selectedId, setSelectedId] = useState("");
+  const [busy, setBusy] = useState(false);
   const companies = getAllCompanies();
 
-  const doExport = (format: "json" | "csv") => {
+  const doExport = async (format: "json" | "csv") => {
     let data: string;
     let filename: string;
     const date = new Date().toISOString().slice(0, 10);
+
+    // Always export the complete, current dataset: refresh the local cache from
+    // Supabase first so the file never reflects a stale/partial localStorage.
+    if (type !== "single") {
+      try {
+        setBusy(true);
+        const remote = await pullAllCompaniesFromSupabase();
+        replaceAllCompanies(remote);
+      } catch (err) {
+        showToast(
+          `Kunde inte hämta senaste data: ${err instanceof Error ? err.message : "Okänt fel"}. Exporterar lokal cache.`,
+          "error"
+        );
+      } finally {
+        setBusy(false);
+      }
+    }
 
     if (type === "all") {
       data = format === "json" ? exportJSON() : exportCSV();
@@ -305,18 +325,20 @@ export function ExportView({ searchQuery, filters, onComplete }: ExportViewProps
         <Button
           variant="primary"
           size="md"
+          disabled={busy}
           onClick={() => doExport("json")}
         >
           <Download className="w-4 h-4" />
-          Exportera JSON
+          {busy ? "Hämtar…" : "Exportera JSON"}
         </Button>
         <Button
           variant="accent"
           size="md"
+          disabled={busy}
           onClick={() => doExport("csv")}
         >
           <Download className="w-4 h-4" />
-          Exportera CSV
+          {busy ? "Hämtar…" : "Exportera CSV"}
         </Button>
       </div>
     </div>
