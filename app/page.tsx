@@ -23,7 +23,6 @@ import {
   DuplicateOrgnrError,
 } from "@/lib/data";
 import { pullAllCompaniesFromSupabase } from "@/lib/actions/pull";
-import { migrateCompaniesFromLocalStorage } from "@/lib/actions/migrate";
 import type { Company, CompanyFormData, Filters } from "@/lib/types";
 
 const LOCAL_STORAGE_KEY = "savantmedia_foretagsdb";
@@ -318,33 +317,6 @@ export default function HomePage() {
     }
   }, [searchQuery, filters, showToast]);
 
-  const twoWaySync = useCallback(async () => {
-    setSyncing(true);
-    try {
-      // 1) Push local changes to Supabase (upsert by orgnr)
-      const local = getAllCompanies();
-      const pushResult = await migrateCompaniesFromLocalStorage(local);
-      // 2) Pull fresh state back (Supabase is now source of truth)
-      const remote = await pullAllCompaniesFromSupabase();
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(remote));
-      const now = new Date().toISOString();
-      localStorage.setItem(LAST_SYNC_KEY, now);
-      setLastSync(now);
-      setCompanies(searchCompanies(searchQuery, filters));
-      showToast(
-        `Synkroniserat: ${pushResult.imported} skapade + ${pushResult.updated} uppdaterade. ${remote.length} företag i databasen.`,
-        "success"
-      );
-    } catch (err) {
-      showToast(
-        `Sync misslyckades: ${err instanceof Error ? err.message : String(err)}`,
-        "error"
-      );
-    } finally {
-      setSyncing(false);
-    }
-  }, [searchQuery, filters, showToast]);
-
   useEffect(() => {
     if (dataLoaded) return;
     if (typeof window === "undefined") return;
@@ -502,12 +474,12 @@ export default function HomePage() {
           <Button
             variant="outline"
             size="md"
-            onClick={twoWaySync}
+            onClick={() => pullFromSupabase(false)}
             disabled={syncing}
-            title={lastSync ? `Senast synk: ${new Date(lastSync).toLocaleString("sv-SE")} — klick = push lokala ändringar + pull Supabase` : "Aldrig synkat — klick för two-way sync"}
+            title={lastSync ? `Senast hämtning: ${new Date(lastSync).toLocaleString("sv-SE")} — klick = hämta senaste data från Supabase` : "Klick för att hämta data från Supabase"}
           >
             <RefreshCcw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Synkar..." : "Synka"}
+            {syncing ? "Hämtar..." : "Hämta"}
           </Button>
           <Button variant="outline" size="md" onClick={() => openModalFor("import")}>
             <Upload className="w-4 h-4" /> Importera
