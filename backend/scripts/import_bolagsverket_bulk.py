@@ -383,12 +383,34 @@ def region_from_postnr(postnr: str) -> str:
     return POSTNR_TO_REGION.get(p[:2], "") if len(p) >= 2 else ""
 
 
+def _norm_orgnr_dash(raw) -> str | None:
+    digits = "".join(c for c in strip_label(raw) if c.isdigit())
+    return f"{digits[:6]}-{digits[6:]}" if len(digits) == 10 else None
+
+
+def _fetch_existing_orgnrs(sb) -> set[str]:
+    existing: set[str] = set()
+    start = 0
+    while True:
+        r = (sb.table("companies").select("organisationsnummer")
+             .range(start, start + 999).execute())
+        if not r.data:
+            break
+        existing.update((c.get("organisationsnummer") or "") for c in r.data)
+        if len(r.data) < 1000:
+            break
+        start += 1000
+    existing.discard("")
+    return existing
+
+
 def cmd_apply(
     source_key: str,
     limit: int | None,
     region_filter: str | None,
     orgnr_filter: str | None,
     dry_run: bool,
+    new_only: bool = False,
 ) -> int:
     """Apply with real Bolagsverket bulk schema."""
     source = SOURCES[source_key]
@@ -416,8 +438,8 @@ def cmd_apply(
         where_clauses.append(f"organisationsidentitet LIKE '{clean}%'")
     where_sql = " AND ".join(f"({c})" for c in where_clauses)
 
-    # Use a generous LIMIT in SQL (pre-region-filter) so we get enough candidates
-    sql_limit = (limit or 100) * 50 if region_filter else (limit or 100)
+    # Use a generous LIMIT in SQL (pre-filter) so we get enough candidates
+    sql_limit = (limit or 100) * 50 if (region_filter or new_only) else (limit or 100)
 
     query = f"""
         SELECT
@@ -467,6 +489,20 @@ def cmd_apply(
             else rows.iloc[0:0]
         )
         console.print(f"Post-region filter '{region_filter}': [bold]{len(rows)}[/bold] rows")
+
+    # Keep only org.nr NOT already in the DB (net-new import)
+    if new_only:
+        existing = _fetch_existing_orgnrs(get_supabase())
+        before = len(rows)
+        mask = rows["organisationsidentitet"].map(
+            lambda o: (_norm_orgnr_dash(o) is not None)
+            and (_norm_orgnr_dash(o) not in existing)
+        )
+        rows = rows[mask]
+        console.print(
+            f"new-only: {before} → [bold]{len(rows)}[/bold] rows after removing "
+            f"{len(existing)} existing org.nr"
+        )
 
     if limit and len(rows) > limit:
         rows = rows.head(limit)
@@ -667,6 +703,11 @@ def main() -> int:
     p_apply.add_argument("--region", default=None, help="e.g. 'Stockholms län'")
     p_apply.add_argument("--orgnr", default=None, help="Filter by single org.nr")
     p_apply.add_argument(
+        "--new-only",
+        action="store_true",
+        help="Skip org.nr already in the DB → import only net-new companies",
+    )
+    p_apply.add_argument(
         "--dry-run",
         action="store_true",
         help="Show what would be written, but skip DB writes",
@@ -690,6 +731,7 @@ def main() -> int:
             args.region,
             args.orgnr,
             args.dry_run,
+            args.new_only,
         )
     if args.cmd == "stats":
         return cmd_stats()
