@@ -520,8 +520,18 @@ export function exportCSV(ids?: string[]): string {
     "Senast ändrad",
   ];
 
+  const rankContact = (c: Contact) =>
+    (c.email && c.email.trim() ? 4 : 0) +
+    (c.verifierad ? 2 : 0) +
+    (/(vd|verkst|chef|ceo|ägare|owner|grundare|partner)/i.test(c.roll || "") ? 2 : 0) +
+    (c.linkedinUrl && c.linkedinUrl.trim() ? 1 : 0) +
+    (c.telefon && c.telefon.trim() ? 1 : 0);
+
   const rows = companies.map((f) => {
-    const k = f.kontakter || [];
+    // Keep the 3-contact format, but pick the 3 MOST valuable contacts
+    // (decision-makers / verified emails) instead of the 3 oldest by id,
+    // so freshly-found VD emails aren't the ones dropped.
+    const k = [...(f.kontakter || [])].sort((a, b) => rankContact(b) - rankContact(a));
     const padded: Contact[] = [...k];
     while (padded.length < 3) {
       padded.push({
