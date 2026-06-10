@@ -50,22 +50,27 @@ def _sb():
     return create_client(url, key)
 
 
-def main(size: int) -> None:
+def main(size: int, recent_hours: float | None = None) -> None:
     sb = _sb()
+    cutoff = None
+    if recent_hours:
+        from datetime import datetime, timedelta, timezone
+        cutoff = (datetime.now(timezone.utc)
+                  - timedelta(hours=recent_hours)).isoformat()
     rows: list[dict] = []
     start = 0
     page = 1000
     while True:
-        resp = (
+        q = (
             sb.table("companies")
             .select("id, foretagsnamn, organisationsnummer, stad, "
                     "sni_branscher, domain, reception_telefon, email_info, "
-                    "antal_anstallda")
+                    "antal_anstallda, skapad_datum")
             .eq("arkiverad", False)
-            .order("foretagsnamn")
-            .range(start, start + page - 1)
-            .execute()
         )
+        if cutoff:
+            q = q.gte("skapad_datum", cutoff)
+        resp = q.order("foretagsnamn").range(start, start + page - 1).execute()
         if not resp.data:
             break
         rows.extend(resp.data)
@@ -124,4 +129,7 @@ def main(size: int) -> None:
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--size", type=int, default=22)
-    main(p.parse_args().size)
+    p.add_argument("--recent-hours", type=float, default=None,
+                   help="solo aziende create nelle ultime N ore (es. import recente)")
+    a = p.parse_args()
+    main(a.size, a.recent_hours)

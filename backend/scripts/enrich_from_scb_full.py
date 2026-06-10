@@ -257,15 +257,25 @@ def _build_index(
 
 def main(dry_run: bool) -> None:
     sb = _supabase()
-    resp = (
-        sb.table("companies")
-        .select("id, foretagsnamn, organisationsnummer, adress_gata, "
-                "postnummer, stad, region, sni_primary_kod, antal_anstallda, "
-                "storlek_kategori")
-        .eq("arkiverad", False)
-        .execute()
-    )
-    companies = resp.data
+    companies = []
+    _start, _page = 0, 1000
+    while True:
+        resp = (
+            sb.table("companies")
+            .select("id, foretagsnamn, organisationsnummer, adress_gata, "
+                    "postnummer, stad, region, sni_primary_kod, antal_anstallda, "
+                    "storlek_kategori")
+            .eq("arkiverad", False)
+            .order("id")
+            .range(_start, _start + _page - 1)
+            .execute()
+        )
+        if not resp.data:
+            break
+        companies.extend(resp.data)
+        if len(resp.data) < _page:
+            break
+        _start += _page
     console.print(f"[bold cyan]Active companies: {len(companies)}[/]")
 
     targets = {_norm_orgnr(c.get("organisationsnummer") or "")
