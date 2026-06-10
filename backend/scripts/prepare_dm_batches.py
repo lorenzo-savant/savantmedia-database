@@ -62,12 +62,20 @@ def _fetch_all(sb, table, select):
     return rows
 
 
-def main(size: int, only_domain: bool, no_domain: bool) -> None:
+def main(size: int, only_domain: bool, no_domain: bool,
+         recent_hours: float | None = None) -> None:
     sb = _sb()
+    cutoff = None
+    if recent_hours:
+        from datetime import datetime, timedelta, timezone
+        cutoff = (datetime.now(timezone.utc)
+                  - timedelta(hours=recent_hours)).isoformat()
     companies = [c for c in _fetch_all(
         sb, "companies",
-        "id, foretagsnamn, organisationsnummer, stad, domain, sni_branscher, arkiverad"
-    ) if not c.get("arkiverad")]
+        "id, foretagsnamn, organisationsnummer, stad, domain, sni_branscher, "
+        "arkiverad, skapad_datum"
+    ) if not c.get("arkiverad")
+        and (not cutoff or (c.get("skapad_datum") or "") >= cutoff)]
     contacts = _fetch_all(
         sb, "contacts", "id, company_id, namn, roll, email, is_dm"
     )
@@ -133,5 +141,7 @@ if __name__ == "__main__":
                    help="solo aziende con dominio noto (resa alta)")
     p.add_argument("--no-domain", action="store_true",
                    help="solo aziende SENZA dominio noto (resa bassa, va trovato il sito)")
+    p.add_argument("--recent-hours", type=float, default=None,
+                   help="solo aziende create nelle ultime N ore (es. import recente)")
     a = p.parse_args()
-    main(a.size, a.only_domain, a.no_domain)
+    main(a.size, a.only_domain, a.no_domain, a.recent_hours)
