@@ -92,15 +92,21 @@ def _name_tokens(namn: str):
     return _fold(toks[0]), _fold(toks[-1])
 
 
-def _email_matches_name(local: str, first: str, last: str) -> bool:
-    l = _fold(local)
-    if not l or len(first) < 2 or len(last) < 2:
+def _email_matches_name(local: str, namn: str) -> bool:
+    """Match only if the local-part contains the SURNAME and at least one full
+    given-name token (handles Swedish middle-name usage like 'Nils Göran' →
+    goran.nilarp). Rejects surname-only collisions (f.anderberg ≠ Annelie A.)
+    and leading-digit junk (00jenny...)."""
+    if not local or local[:1].isdigit():
         return False
-    if first in l and last in l:
-        return True
-    if last in l and len(last) >= 4 and first[0] in l:  # f.lastname / flastname
-        return True
-    return False
+    l = _fold(local)
+    toks = [_fold(t) for t in (namn or "").split() if len(_fold(t)) >= 3]
+    if len(toks) < 2 or not l:
+        return False
+    last, givens = toks[-1], toks[:-1]
+    if last not in l:
+        return False
+    return any(g in l for g in givens)
 
 
 def _sb() -> Client:
@@ -116,6 +122,15 @@ def _fc_key() -> str:
         load_dotenv(p)
     load_dotenv()
     return os.environ["FIRECRAWL_API_KEY"]
+
+
+def _remaining(key: str):
+    try:
+        return (requests.get("https://api.firecrawl.dev/v1/team/credit-usage",
+                headers={"Authorization": f"Bearer {key}"}, timeout=30)
+                .json().get("data", {}).get("remaining_credits"))
+    except Exception:
+        return None
 
 
 def _scrape(key: str, url: str, stealth: bool = False) -> tuple[str, bool, int]:
@@ -232,13 +247,23 @@ def main(limit: int, max_credits: int, max_pages: int, stealth_fallback: bool,
     console.print(f"[bold cyan]Targets: {len(targets)} (max_credits={max_credits} "
                   f"stealth_fallback={stealth_fallback} dry_run={dry_run})[/]")
     now = datetime.now(timezone.utc).isoformat()
-    credits = 0
+    credits = 0                      # local estimate (fast guard between polls)
+    start_real = _remaining(key)     # true cap is enforced against the live API
     stats = {"companies": 0, "dm_emails": 0, "email_info": 0, "blocked": 0,
              "no_email": 0, "errors": 0}
 
-    for t in targets:
-        if credits >= max_credits:
-            console.print(f"[yellow]Credit cap {max_credits} reached — stopping.[/]")
+    for i, t in enumerate(targets):
+        # enforce the TRUE credit cap against live API every few companies
+        if i % 5 == 0 and start_real is not None:
+            cur = _remaining(key)
+            if cur is not None:
+                real_spent = start_real - cur
+                if real_spent >= max_credits:
+                    console.print(f"[yellow]Real credit cap reached: spent "
+                                  f"{real_spent} ≥ {max_credits} — stopping.[/]")
+                    break
+        if credits >= max_credits * 2:  # safety guard if API polling fails
+            console.print(f"[yellow]Local estimate guard hit — stopping.[/]")
             break
         c = t["company"]
         domain = (c["domain"] or "").strip().lower().replace("www.", "")
@@ -288,14 +313,10 @@ def main(limit: int, max_credits: int, max_pages: int, stealth_fallback: bool,
 
         # 1) match personal email to a known named contact (VD/DM work email)
         for k in t["named_no_email"]:
-            nt = _name_tokens(k["namn"])
-            if not nt:
-                continue
-            first, last = nt
             for em, (local, src_url) in found_emails.items():
                 if local in GENERIC:
                     continue
-                if _email_matches_name(local, first, last):
+                if _email_matches_name(local, k["namn"]):
                     if not dry_run:
                         try:
                             sb.table("contacts").update({
