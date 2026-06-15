@@ -53,6 +53,22 @@ ROOT_ENV = [os.path.join(os.path.dirname(__file__), "..", "..", ".env"),
 FC_URL = "https://api.firecrawl.dev/v1/scrape"
 FC_SEARCH = "https://api.firecrawl.dev/v1/search"
 SEARCH_COST = 2  # credits per /search call (measured)
+ATTEMPTED_FILE = os.path.join(os.path.dirname(__file__), "..", "data",
+                              "firecrawl_attempted.txt")
+
+
+def _load_attempted() -> set[str]:
+    try:
+        with open(ATTEMPTED_FILE, encoding="utf-8") as f:
+            return {ln.strip() for ln in f if ln.strip()}
+    except FileNotFoundError:
+        return set()
+
+
+def _mark_attempted(cid: str) -> None:
+    os.makedirs(os.path.dirname(ATTEMPTED_FILE), exist_ok=True)
+    with open(ATTEMPTED_FILE, "a", encoding="utf-8") as f:
+        f.write(cid + "\n")
 DEFAULT_PATHS = ["/kontakt/", "/medarbetare/", "/om-oss/ledning/", "/om-oss/",
                  "/kontakta-oss/", "/team/", "/"]
 EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
@@ -220,22 +236,24 @@ def _fetch_targets(sb: Client, limit: int):
     for k in contacts:
         by_co.setdefault(k["company_id"], []).append(k)
 
+    # FOCUS: only VD/decision-maker personal company emails.
+    # Target = company with a domain + a NAMED DM/contact without email + no
+    # DM-with-email yet. (email_info is intentionally NOT pursued.)
+    # Skip companies already attempted in a prior Firecrawl run (no re-spend).
+    attempted = _load_attempted()
     targets = []
     for c in companies:
+        if c["id"] in attempted:
+            continue
         ks = by_co.get(c["id"], [])
-        has_dm_email = any(k.get("is_dm") and (k.get("email") or "").strip() for k in ks)
+        if any(k.get("is_dm") and (k.get("email") or "").strip() for k in ks):
+            continue
         named_no_email = [k for k in ks if (k.get("namn") or "").strip()
                           and not (k.get("email") or "").strip()]
-        need_email_info = not (c.get("email_info") or "").strip()
-        if has_dm_email and not need_email_info:
+        if not named_no_email:
             continue
-        if not named_no_email and not need_email_info:
-            continue
-        targets.append({"company": c, "named_no_email": named_no_email,
-                        "need_email_info": need_email_info})
-    # priority: companies with a known VD/DM name (best email-match candidates) first
-    targets.sort(key=lambda t: (0 if t["named_no_email"] else 1,
-                                t["company"]["foretagsnamn"]))
+        targets.append({"company": c, "named_no_email": named_no_email})
+    targets.sort(key=lambda t: t["company"]["foretagsnamn"])
     return targets[:limit]
 
 
@@ -270,6 +288,8 @@ def main(limit: int, max_credits: int, max_pages: int, stealth_fallback: bool,
         if not domain or "." not in domain:
             continue
         stats["companies"] += 1
+        if not dry_run:
+            _mark_attempted(c["id"])
         need_personal = len(t["named_no_email"]) > 0
         found_emails: dict[str, tuple[str, str]] = {}  # email -> (local, source_url)
 
@@ -340,27 +360,6 @@ def main(limit: int, max_credits: int, max_pages: int, stealth_fallback: bool,
                     stats["dm_emails"] += 1
                     console.print(f"[green]DM {k['namn'][:24]:24} → {em}  [{src_url}][/]")
                     break
-
-        # 2) email_info — ONLY a true generic mailbox (no personal/placeholder fallback)
-        if t["need_email_info"]:
-            gen = next(((em, u) for em, (local, u) in found_emails.items()
-                        if local in EMAIL_INFO_OK), None)
-            if gen:
-                generic, generic_url = gen
-                if not dry_run:
-                    try:
-                        sb.table("companies").update({"email_info": generic}).eq(
-                            "id", c["id"]).execute()
-                        sb.table("sources").insert({
-                            "company_id": c["id"], "field_name": "companies.email_info",
-                            "source_url": generic_url, "scraper_tier": 2,
-                            "raw_excerpt": f"firecrawl email_info={generic} @ {generic_url}"[:500],
-                            "critic_note": "enrich_firecrawl.py — JS-rendered site scrape",
-                        }).execute()
-                    except Exception as exc:  # noqa: BLE001
-                        stats["errors"] += 1
-                stats["email_info"] += 1
-                console.print(f"[cyan]   email_info {c['foretagsnamn'][:28]:28} → {generic}[/]")
 
     # remaining credits from API
     try:
