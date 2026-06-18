@@ -20,12 +20,12 @@ import {
   updateCompany,
   archiveCompany,
   restoreCompany,
+  writeCompanyCache,
   DuplicateOrgnrError,
 } from "@/lib/data";
 import { pullAllCompaniesFromSupabase } from "@/lib/actions/pull";
 import type { Company, CompanyFormData, Filters } from "@/lib/types";
 
-const LOCAL_STORAGE_KEY = "savantmedia_foretagsdb";
 const LAST_SYNC_KEY = "savantmedia_last_sync";
 
 const DEMO_DATA: CompanyFormData[] = [
@@ -297,12 +297,18 @@ export default function HomePage() {
     setSyncing(true);
     try {
       const remote = await pullAllCompaniesFromSupabase();
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(remote));
+      const cached = writeCompanyCache(remote);
       const now = new Date().toISOString();
       localStorage.setItem(LAST_SYNC_KEY, now);
       setLastSync(now);
       setCompanies(searchCompanies(searchQuery, filters));
-      if (!silent) {
+      if (!cached) {
+        showToast(
+          `Synkroniserade ${remote.length} företag, men datamängden ryms inte i ` +
+            `webbläsarens lokala lagring — listan visas men sparas inte lokalt mellan sidladdningar.`,
+          "error",
+        );
+      } else if (!silent) {
         showToast(`Synkroniserat ${remote.length} företag från Supabase.`, "success");
       }
     } catch (err) {

@@ -12,8 +12,47 @@ import {
   normalizeOrgnr,
   isValidOrgnr,
 } from "./utils";
+import LZString from "lz-string";
 
 const STORAGE_KEY = "savantmedia_foretagsdb";
+// Marker for lz-string-compressed blobs. The whole-DB cache outgrew the ~5 MB
+// localStorage quota once the dataset passed a few thousand companies, so the
+// blob is now stored compressed (~13× smaller). Legacy plain-JSON blobs (no
+// prefix) are still read, then rewritten compressed on the next save.
+const LZ_PREFIX = "LZ1:";
+
+/** Decode a cache blob: lz-string-compressed (LZ1: prefix) or legacy plain JSON. */
+function decodeCache(raw: string): unknown {
+  const json = raw.startsWith(LZ_PREFIX)
+    ? LZString.decompressFromUTF16(raw.slice(LZ_PREFIX.length))
+    : raw;
+  if (!json) return null;
+  return JSON.parse(json);
+}
+
+/**
+ * Persist the full company cache, compressed. Returns false (without throwing)
+ * if even the compressed payload exceeds the localStorage quota, so the app
+ * keeps working from Supabase + in-memory state instead of hard-crashing.
+ * This is the single write path for the cache — all callers must use it.
+ */
+export function writeCompanyCache(data: Company[]): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      LZ_PREFIX + LZString.compressToUTF16(JSON.stringify(data)),
+    );
+    return true;
+  } catch (err) {
+    console.error(
+      "savantmedia: kunde inte spara lokal cache (localStorage-kvoten " +
+        "överskreds). Datan finns kvar i Supabase och i appens minne.",
+      err,
+    );
+    return false;
+  }
+}
 
 function generateId(): string {
   return "f" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -106,7 +145,7 @@ export function getAllCompanies(): Company[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: unknown = decodeCache(raw);
     if (!Array.isArray(parsed)) return [];
     let needsRewrite = false;
     const migrated = parsed.map((item) => {
@@ -123,7 +162,7 @@ export function getAllCompanies(): Company[] {
 }
 
 function saveCompanies(data: Company[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  writeCompanyCache(data);
 }
 
 /** Overwrite the entire local cache (used by sync/export to refresh from Supabase). */

@@ -17,7 +17,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { SavantLogo } from "@/components/savant-logo";
-import { getAllCompanies, generateTemplateCSV, downloadFile } from "@/lib/data";
+import {
+  getAllCompanies,
+  generateTemplateCSV,
+  downloadFile,
+  writeCompanyCache,
+} from "@/lib/data";
 import {
   migrateCompaniesFromLocalStorage,
   getDbStats,
@@ -99,11 +104,14 @@ export default function MigratePage() {
     setPulling(true);
     try {
       const fromDb = await pullAllCompaniesFromSupabase();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(fromDb));
+      const cached = writeCompanyCache(fromDb);
       setLocalCompanies(fromDb);
       showToast(
-        `Hämtade ${fromDb.length} företag från Supabase till localStorage.`,
-        "success"
+        cached
+          ? `Hämtade ${fromDb.length} företag från Supabase till localStorage.`
+          : `Hämtade ${fromDb.length} företag, men de ryms inte i localStorage ` +
+              `(kvot överskriden) — visas men sparas inte lokalt.`,
+        cached ? "success" : "error",
       );
     } catch (err) {
       showToast(
