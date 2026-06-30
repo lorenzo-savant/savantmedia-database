@@ -99,13 +99,21 @@ def _domain_matches_name(domain: str, company_name: str) -> bool:
     return any(t in base for t in tokens[:3])
 
 
-def _fetch_targets(sb: Client, limit: int, offset: int) -> list[CompanyRow]:
-    resp = (
+def _fetch_targets(sb: Client, limit: int, offset: int,
+                   recent_hours: float | None = None) -> list[CompanyRow]:
+    q = (
         sb.table("companies")
         .select("id, foretagsnamn, organisationsnummer, stad, domain, "
                 "reception_telefon, email_info")
         .eq("arkiverad", False)
-        .order("foretagsnamn")
+    )
+    if recent_hours:
+        from datetime import datetime, timedelta, timezone
+        cutoff = (datetime.now(timezone.utc)
+                  - timedelta(hours=recent_hours)).isoformat()
+        q = q.gte("skapad_datum", cutoff)
+    resp = (
+        q.order("foretagsnamn")
         .range(offset, offset + max(limit * 4, 100) - 1)
         .execute()
     )
@@ -267,12 +275,14 @@ async def _worker(
         queue.task_done()
 
 
-async def main(limit: int, offset: int, workers: int, dry_run: bool) -> None:
+async def main(limit: int, offset: int, workers: int, dry_run: bool,
+               recent_hours: float | None = None) -> None:
     sb = _supabase()
-    targets = _fetch_targets(sb, limit=limit, offset=offset)
+    targets = _fetch_targets(sb, limit=limit, offset=offset,
+                             recent_hours=recent_hours)
     console.print(
         f"[bold cyan]Targets: {len(targets)} (limit={limit} offset={offset} "
-        f"workers={workers} dry_run={dry_run})[/]"
+        f"workers={workers} dry_run={dry_run} recent_hours={recent_hours})[/]"
     )
     if not targets:
         return
@@ -299,8 +309,11 @@ def _cli() -> None:
     p.add_argument("--offset", type=int, default=0)
     p.add_argument("--workers", type=int, default=2)
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--recent-hours", type=float, default=None,
+                   help="solo aziende create nelle ultime N ore (es. import recente)")
     args = p.parse_args()
-    asyncio.run(main(args.limit, args.offset, args.workers, args.dry_run))
+    asyncio.run(main(args.limit, args.offset, args.workers, args.dry_run,
+                     args.recent_hours))
 
 
 if __name__ == "__main__":

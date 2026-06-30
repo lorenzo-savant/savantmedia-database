@@ -135,3 +135,5 @@ backend/data/screenshots/*.png
 
 .vercel
 .gstack/
+
+.env*

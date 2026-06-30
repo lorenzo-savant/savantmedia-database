@@ -343,6 +343,7 @@ def _fetch_targets(
     domain: str | None,
     name_contains: list[str] | None = None,
     offset: int = 0,
+    recent_hours: float | None = None,
 ) -> list[CompanyRow]:
     q = (
         sb.table("companies")
@@ -350,9 +351,14 @@ def _fetch_targets(
         .eq("arkiverad", False)
         .not_.is_("domain", "null")
         .neq("domain", "")
-        .order("foretagsnamn")
-        .range(offset, offset + limit - 1)  # finestra per il chunking parallelo
     )
+    if recent_hours:
+        from datetime import datetime, timedelta, timezone
+        cutoff = (datetime.now(timezone.utc)
+                  - timedelta(hours=recent_hours)).isoformat()
+        q = q.gte("skapad_datum", cutoff)
+    q = (q.order("foretagsnamn")
+         .range(offset, offset + limit - 1))  # finestra per il chunking parallelo
     if domain:
         q = q.eq("domain", domain)
     if name_contains:
@@ -393,10 +399,12 @@ async def main(
     name_contains: list[str] | None,
     offset: int = 0,
     as_json: bool = False,
+    recent_hours: float | None = None,
 ) -> None:
     sb = _supabase()
     targets = _fetch_targets(
-        sb, limit=limit, domain=domain, name_contains=name_contains, offset=offset
+        sb, limit=limit, domain=domain, name_contains=name_contains,
+        offset=offset, recent_hours=recent_hours,
     )
     if not as_json:
         console.print(
@@ -515,6 +523,8 @@ def _cli() -> None:
         "--json", dest="as_json", action="store_true",
         help="Output JSON strutturato (per orchestrazione multi-agente)",
     )
+    p.add_argument("--recent-hours", type=float, default=None,
+                   help="solo aziende create nelle ultime N ore (es. import recente)")
     args = p.parse_args()
     name_contains = (
         [s for s in args.name_contains.split(",") if s.strip()]
@@ -522,7 +532,8 @@ def _cli() -> None:
         else None
     )
     asyncio.run(
-        main(args.limit, args.domain, args.apply, name_contains, args.offset, args.as_json)
+        main(args.limit, args.domain, args.apply, name_contains, args.offset,
+             args.as_json, args.recent_hours)
     )
 
 
